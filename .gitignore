@@ -1,0 +1,20 @@
+# 构建产物
+.build/
+dist/
+*.dmg
+*.app
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Xcode（本项目用 SwiftPM，但有人可能顺手打开）
+xcuserdata/
+*.xcuserstate
+*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+DerivedData/
+
+# 本地覆盖
+*.local
+.env
