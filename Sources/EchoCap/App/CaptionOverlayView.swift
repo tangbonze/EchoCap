@@ -34,17 +34,67 @@ struct CaptionOverlayView: View {
                             isHighlighted: false
                         )
                         .transition(.opacity)
+                    } else if let banner = model.banner {
+                        BannerView(banner: banner)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
                 }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                // The part of the caption under the pointer dissolves away so
+                // it never covers what the user is reading or writing.
+                .dissolveUnderPointer(
+                    location: model.pointerLocation,
+                    radius: model.settings.pointerDissolveRadius,
+                    extent: model.settings.pointerDissolveExtent,
+                    size: proxy.size
+                )
             }
             .background(Color.clear)
             .allowsHitTesting(false)
             .onAppear { model.containerSize = proxy.size }
             .onChange(of: proxy.size) { _, newValue in model.containerSize = newValue }
         }
+    }
+}
+
+/// A compact notice shown when the app cannot produce captions.
+struct BannerView: View {
+    let banner: OverlayBanner
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: banner.kind.symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(banner.kind.tint)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(banner.title)
+                    .font(.system(size: 14, weight: .semibold))
+                if let detail = banner.detail {
+                    Text(detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .frame(maxWidth: 460, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.94))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(banner.kind.tint.opacity(0.35), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
     }
 }
 
@@ -103,8 +153,40 @@ struct CaptionBoxView: View {
     }
 }
 
+/// A message shown in the overlay when something needs the user's attention.
+struct OverlayBanner: Equatable {
+    enum Kind {
+        case error
+        case warning
+        case info
+
+        var symbol: String {
+            switch self {
+            case .error: return "exclamationmark.triangle.fill"
+            case .warning: return "exclamationmark.circle.fill"
+            case .info: return "info.circle.fill"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .error: return .red
+            case .warning: return .orange
+            case .info: return .accentColor
+            }
+        }
+    }
+
+    let kind: Kind
+    let title: String
+    let detail: String?
+}
+
 /// Observable state the overlay renders from.
 final class OverlayModel: ObservableObject {
+    /// A message to show in place of captions, when the app cannot caption.
+    @Published var banner: OverlayBanner?
+
     @Published var liveBox: CaptionBox?
     @Published var historyBoxes: [CaptionBox] = []
     @Published var isShowingHistory = false

@@ -52,13 +52,24 @@
 - 文字记录可导出为纯文本 / Markdown / SRT
 - 设置面板：字号、每屏行数、底板不透明度、淡出半径、堆叠间距等，拖动即时生效
 
-### 采集失败时不会卡住
+### 采集失败时不会卡住，而且会告诉你为什么
 
-Core Audio 在音频服务器状态异常时会阻塞（实测机器锁屏、无默认输出设备时，`AudioDeviceStart` 会一直等下去）。因此：
+系统音频的采集由一个**独立的辅助进程**（`EchoCapCapture`）完成，GUI 只负责读它的标准输出。
 
-- 采集的建立放在独立队列上，**永远不占住主线程**，界面不会冻住
-- 8 秒超时后给出明确提示，并在 15 秒后自动重试 —— 机器唤醒、输出设备恢复后会自动接上
-- 提示里会直接给出可操作建议（例如改用麦克风）
+这么设计是有原因的：`AudioDeviceCreateIOProcID` 要和音频服务器协商 stream usage，
+而这个协商要走 run loop。**在一个跑着 AppKit 事件循环的进程里，这一步会永远卡住** ——
+既卡死 UI，又拿不到音频。放进一个纯命令行进程就没有这个问题（辅助进程刻意不链接 AppKit）。
+
+因此：
+
+- 采集永远不占住主线程，界面不会冻住
+- 10 秒超时后浮层上会直接弹出**红色提示条**，写清楚失败原因和处理办法
+- 15 秒后自动重试，音频服务恢复后会自动接上
+- 退出时（⌘Q / `kill`）会先销毁 tap 与聚合设备，不给音频服务器留垃圾
+- 辅助进程启动时还会顺手清掉上一次遗留的聚合设备
+
+> 如果提示「macOS 的音频服务可能已经卡住」，执行 `sudo killall coreaudiod` 或重启机器即可恢复。
+> 这是 macOS 音频服务自身的问题，与 EchoCap 无关。
 
 ## 快速开始
 
@@ -95,8 +106,10 @@ Sources/
     TranscriptExporter.swift  txt / md / srt 导出
     LanguageCatalog.swift   语言清单
     AppSettings.swift       持久化设置
+  EchoCapCapture/         采集助手（无 GUI，独立进程跑 tap）
   EchoCap/                macOS 应用
-    SystemAudioCapture.swift  Core Audio process tap → 聚合设备 → IOProc
+    HelperAudioCapture.swift   拉起采集助手，读取 PCM 帧
+    CaptureHelper.swift        助手：Core Audio process tap → 聚合设备 → IOProc
     SpeechEngine.swift        macOS Speech 流式识别
     TranslationService.swift   Apple Translation
     CaptionOverlayWindow.swift 置顶浮层窗口
@@ -109,7 +122,7 @@ Tests/EchoCapTests/       19 个单元测试
 
 ## 技术要点
 
-**捕获系统音频**（`SystemAudioCapture.swift`）
+**捕获系统音频**（`EchoCapCapture/` + `HelperAudioCapture.swift`）
 
 用的是 macOS 14.2 引入的 Core Audio process tap。四步，和 Apple 的参考实现一致：
 
@@ -120,7 +133,17 @@ Tests/EchoCapTests/       19 个单元测试
 
 实时线程只做一次拷贝，写进无锁环形缓冲；重采样和滤波在 worker 线程上做。
 
-> 踩坑记录：tap 的 UID 属性选择器是 `'tuid'` 而不是 `'uuid'`；聚合设备的 `taps` 要传 **字典数组**（`{kAudioSubTapUIDKey: uid}`）而不是字符串数组；少了 `private` 键，`AudioDeviceStart` 会返回 `'nope'`。
+辅助进程把 16 kHz 单声道 Int16 的 PCM 用「4 字节长度 + 数据」的分帧格式写到标准输出，
+主进程读出来直接喂给识别器。
+
+> 踩坑记录（都实测过）：
+>
+> - tap 的 UID 属性选择器是 `'tuid'` 而不是 `'uuid'`
+> - 聚合设备的 `taps` 要传 **字典数组**（`{kAudioSubTapUIDKey: uid}`）而不是字符串数组
+> - 少了 `private` 键，`AudioDeviceStart` 会返回 `'nope'`
+> - `AudioDeviceCreateIOProcID` 的 **client data 必须传 nil**，传非 nil 会永远等不到应答
+> - 回调要写成**全局函数**，不能是闭包字面量 —— Swift 会把闭包桥接成带 context 的 C 函数指针，音频服务器和它握手不上
+> - **不能在跑 AppKit run loop 的进程里创建 tap** —— 所以采集放在独立的辅助进程里
 
 **音频格式**（`SampleRateConverter.swift`）
 
@@ -166,6 +189,7 @@ Speech 框架每次给出的是**当前整段的累积文字**，而且会用不
 - ad-hoc 签名每次重建 CDHash 都会变，macOS 可能因此重新询问权限；用 Developer ID 证书签名可避免
 - 自动检测语言需要多语言模型（`mul_IN`），本机未安装时会自动退回已安装的单语言模型
 - 尚未实现：换人说话自动另起字幕框（需要说话人分离模型）、朗读译文、单一 App 定向捕获
+- 首次运行需要授予「屏幕与系统音频录制」权限；辅助进程在 app 包内，与主程序共用同一份授权
 
 ## 许可证
 

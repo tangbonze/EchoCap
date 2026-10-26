@@ -52,18 +52,29 @@ Unlike the original, EchoCap downloads no models. It uses the Speech and Transla
 - Transcripts export as plain text, Markdown, or SRT
 - Settings panel for size, lines per box, box opacity, dissolve radius, stack spacing, and more — all live
 
-### A failed capture never freezes the app
+### A failed capture never freezes the app — and it tells you why
 
-Core Audio can block when the audio server is unhappy — measured on a machine
-whose screen was locked and had no default output device, where
-`AudioDeviceStart` simply never returned. So:
+System audio is captured by a **separate helper process** (`EchoCapCapture`);
+the GUI only reads PCM frames from its standard output.
 
-- Capture setup happens on its own queue and **never occupies the main thread**,
-  so the UI stays responsive
-- After an 8-second timeout the app says what went wrong and retries 15
-  seconds later — it picks itself up when the machine wakes up
-- The message includes an actionable suggestion (for instance, switch to the
-  microphone)
+That split is not cosmetic. `AudioDeviceCreateIOProcID` negotiates stream usage
+with the audio server, and that negotiation goes through the run loop. **In a
+process that runs an AppKit event loop the call never returns** — it wedges the
+UI and never yields audio. A plain command-line process has no such problem,
+which is why the helper deliberately does not link AppKit.
+
+So:
+
+- Capture never occupies the main thread, so the UI stays responsive
+- After a 10-second timeout a **red banner** appears in the overlay saying
+  exactly what went wrong and what to do about it
+- The app retries 15 seconds later and picks itself up when audio recovers
+- On the way out (⌘Q or `kill`) the tap and aggregate device are destroyed
+  first, so nothing is left behind for the audio server to trip over
+- The helper also sweeps up aggregate devices left by an earlier run
+
+> If the banner says the macOS audio service may be stuck, `sudo killall
+> coreaudiod` or a reboot fixes it. That is a macOS problem, not an EchoCap one.
 
 ## Quick start
 
@@ -100,8 +111,10 @@ Sources/
     TranscriptExporter.swift  txt / md / srt export
     LanguageCatalog.swift   Language list
     AppSettings.swift       Persisted settings
+  EchoCapCapture/         Capture helper (no GUI, runs the tap in its own process)
   EchoCap/                The macOS app
-    SystemAudioCapture.swift  Core Audio process tap → aggregate device → IOProc
+    HelperAudioCapture.swift   Drives the capture helper, reads PCM frames
+    CaptureHelper.swift        The helper: Core Audio process tap → aggregate device → IOProc
     SpeechEngine.swift        Streaming macOS Speech recognition
     TranslationService.swift   Apple Translation
     CaptionOverlayWindow.swift Always-on-top overlay window
@@ -114,7 +127,7 @@ Tests/EchoCapTests/       19 unit tests
 
 ## Technical notes
 
-**Capturing system audio** (`SystemAudioCapture.swift`)
+**Capturing system audio** (`EchoCapCapture/` + `HelperAudioCapture.swift`)
 
 Uses the Core Audio process tap introduced in macOS 14.2. Four steps, matching Apple's reference implementation:
 
@@ -125,7 +138,23 @@ Uses the Core Audio process tap introduced in macOS 14.2. Four steps, matching A
 
 The realtime thread only copies into a lock-free ring buffer; resampling and filtering happen on a worker thread.
 
-> Gotchas: the tap's UID selector is `'tuid'`, not `'uuid'`; the aggregate device's `taps` must be an **array of dictionaries** (`{kAudioSubTapUIDKey: uid}`), not strings; without the `private` key `AudioDeviceStart` returns `'nope'`.
+The helper writes 16 kHz mono Int16 PCM to its standard output, framed as a
+4-byte little-endian length followed by that many bytes. The GUI reads those
+frames and feeds them straight to the recogniser.
+
+> Gotchas, all measured:
+>
+> - The tap's UID selector is `'tuid'`, not `'uuid'`
+> - The aggregate device's `taps` must be an **array of dictionaries**
+>   (`{kAudioSubTapUIDKey: uid}`), not strings
+> - Without the `private` key `AudioDeviceStart` returns `'nope'`
+> - `AudioDeviceCreateIOProcID`'s **client data must be nil** — a non-nil
+>   pointer leaves the handshake waiting forever
+> - The callback has to be a **plain global function**, not a closure literal:
+>   Swift bridges a closure to a C function pointer through a context, and the
+>   audio server never completes the handshake with one
+> - **A tap cannot be created in a process running an AppKit run loop** — hence
+>   the separate helper
 
 **Audio format** (`SampleRateConverter.swift`)
 
@@ -166,6 +195,7 @@ This machine has only the Command Line Tools, no full Xcode, so:
 - Ad-hoc signing changes the CDHash on every rebuild, so macOS may re-ask for permission; a Developer ID signature avoids this
 - Automatic language detection needs the multilingual model (`mul_IN`); when it is not installed the app falls back to an installed single-language model
 - Not implemented: automatic new box on speaker change (needs a speaker-diarisation model), speaking the translation aloud, capturing a single named app
+- Screen & System Audio Recording permission is required; the helper lives inside the app bundle and shares the app's grant
 
 ## License
 

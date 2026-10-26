@@ -19,6 +19,15 @@ cd "$PROJECT_DIR"
 echo "==> 编译 (release)"
 swift build -c release --disable-sandbox --package-path "$PROJECT_DIR"
 
+echo "==> 生成应用图标"
+ICON_FILE="${BUILD_DIR}/${APP_NAME}.icns"
+"${BUILD_DIR}/release/${APP_NAME}" --render-icon "$ICON_FILE" 2>/dev/null || \
+    swift build -c release --disable-sandbox --package-path "$PROJECT_DIR" >/dev/null && \
+    "${BUILD_DIR}/release/${APP_NAME}" --render-icon "$ICON_FILE"
+if [[ ! -f "$ICON_FILE" ]]; then
+    echo "图标生成失败，继续打包（将使用系统默认图标）" >&2
+fi
+
 BINARY="${BUILD_DIR}/release/${APP_NAME}"
 if [[ ! -x "$BINARY" ]]; then
     echo "找不到可执行文件: $BINARY" >&2
@@ -31,6 +40,14 @@ rm -rf "$APP"
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 
 cp "$BINARY" "${APP}/Contents/MacOS/${APP_NAME}"
+# The capture helper lives next to the app inside the bundle.
+HELPER="${BUILD_DIR}/release/EchoCapCapture"
+if [[ -x "$HELPER" ]]; then
+    cp "$HELPER" "${APP}/Contents/MacOS/EchoCapCapture"
+fi
+if [[ -f "$ICON_FILE" ]]; then
+    cp "$ICON_FILE" "${APP}/Contents/Resources/${APP_NAME}.icns"
+fi
 
 cat > "${APP}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -47,6 +64,10 @@ cat > "${APP}/Contents/Info.plist" <<PLIST
     <string>${APP_NAME}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>${APP_NAME}</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
     <key>CFBundleShortVersionString</key>
     <string>${VERSION}</string>
     <key>CFBundleVersion</key>

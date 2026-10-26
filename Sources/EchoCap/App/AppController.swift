@@ -23,7 +23,7 @@ final class AppController {
     let overlayModel: OverlayModel
 
     private let overlay: CaptionOverlayWindow
-    private let systemCapture = SystemAudioCapture()
+    private let systemCapture = HelperAudioCapture()
     private let microphoneCapture = MicrophoneCapture()
     private let speech = SpeechEngine()
     private let translation = TranslationService()
@@ -200,6 +200,11 @@ final class AppController {
             lastError = error.localizedDescription
             statusText = "识别引擎启动失败"
             log("识别引擎启动失败: \(error.localizedDescription)")
+            overlayModel.banner = OverlayBanner(
+                kind: .error,
+                title: "语音识别引擎没能启动",
+                detail: error.localizedDescription
+            )
             return
         }
         log("识别引擎已就绪，语言=\(speech.activeLocale?.identifier ?? "未知")")
@@ -213,14 +218,18 @@ final class AppController {
         do {
             switch source {
             case .systemAudio:
-                systemCapture.onTrace = { [weak self] message in
-                    self?.log("采集: \(message)")
-                }
                 systemCapture.onSamples = { [weak self] samples in
-                    self?.speech.feed(samples: samples)
-                    self?.receivedSampleCount += samples.count
+                    Task { @MainActor [weak self] in
+                        self?.speech.feed(samples: samples)
+                        self?.receivedSampleCount += samples.count
+                    }
                 }
-                try await systemCapture.startAsync()
+                systemCapture.onFailure = { [weak self] message in
+                    Task { @MainActor [weak self] in
+                        self?.log("采集失败: \(message)")
+                    }
+                }
+                try await systemCapture.start()
             case .microphone:
                 microphoneCapture.onSamples = { [weak self] samples in
                     self?.speech.feed(samples: samples)
@@ -230,8 +239,13 @@ final class AppController {
         } catch {
             lastError = error.localizedDescription
             statusText = "音频采集失败"
-            let hint = (error as? SystemAudioCapture.CaptureError)?.recoveryHint
+            let hint = (error as? HelperAudioCapture.CaptureError)?.recoveryHint
             log("音频采集失败: \(error.localizedDescription)\(hint.map { " — " + $0 } ?? "")")
+            overlayModel.banner = OverlayBanner(
+                kind: .error,
+                title: "没能开始聆听系统音频",
+                detail: hint ?? error.localizedDescription
+            )
             await speech.finish()
             // The audio server sometimes recovers on its own — for instance
             // when the machine wakes up. Try again shortly.
@@ -240,6 +254,11 @@ final class AppController {
         }
 
         log("采集已启动: \(source.displayName)")
+        overlayModel.banner = OverlayBanner(
+            kind: .info,
+            title: "正在聆听……",
+            detail: "播放点什么，字幕就会出现在这里。"
+        )
         isRunning = true
         receivedSampleCount = 0
         statusText = "正在聆听"

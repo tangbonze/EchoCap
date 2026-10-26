@@ -20,10 +20,12 @@ let package = Package(
     products: [
         .library(name: "EchoCapCore", targets: ["EchoCapCore"]),
         .executable(name: "EchoCap", targets: ["EchoCap"]),
+        .executable(name: "EchoCapCapture", targets: ["EchoCapCapture"]),
     ],
     targets: [
         .target(name: "EchoCapCore"),
         .executableTarget(name: "EchoCap", dependencies: ["EchoCapCore"]),
+        .executableTarget(name: "EchoCapCapture", dependencies: ["EchoCapCore"]),
         .testTarget(
             name: "EchoCapTests",
             dependencies: ["EchoCapCore"],
