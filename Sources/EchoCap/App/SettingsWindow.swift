@@ -276,27 +276,33 @@ struct SettingsView: View {
     var frameHeight: CGFloat = 700
 
     var body: some View {
-        TabView(selection: $model.selectedTab) {
-            appearanceTab
-                .tabItem { Label("外观", systemImage: "textformat") }
-                .tag(SettingsTab.appearance)
-            behaviourTab
-                .tabItem { Label("行为", systemImage: "slider.horizontal.3") }
-                .tag(SettingsTab.behaviour)
-            aboutTab
-                .tabItem { Label("关于", systemImage: "info.circle") }
-                .tag(SettingsTab.about)
+        VStack(spacing: 0) {
+            CapsuleTabSwitcher(selection: $model.selectedTab)
+                .padding(.top, 16)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 30) {
+                    switch model.selectedTab {
+                    case .appearance: appearanceTab
+                    case .behaviour: behaviourTab
+                    case .about: aboutTab
+                    }
+                }
+                .padding(.horizontal, 30)
+                .padding(.top, 24)
+                .padding(.bottom, 34)
+            }
         }
-        .padding(20)
+        .background(Color(nsColor: .textBackgroundColor))
         .frame(width: 640, height: frameHeight)
     }
 
     // MARK: - Appearance
 
     private var appearanceTab: some View {
-        Form {
-            Section("字幕") {
-                LabeledContent("文字大小") {
+        VStack(alignment: .leading, spacing: 30) {
+            SettingsGroup(title: "字幕") {
+                SettingsRow(label: "文字大小", showDivider: true) {
                     HStack {
                         Slider(value: $model.fontSize, in: 14...56, step: 1) { editing in
                             if !editing { model.commitAppearance() }
@@ -308,7 +314,7 @@ struct SettingsView: View {
                     }
                 }
 
-                LabeledContent("原文行数") {
+                SettingsRow(label: "原文行数", showDivider: true) {
                     HStack {
                         Slider(value: $model.linesPerBox, in: 1...6, step: 1) { editing in
                             if !editing { model.commitAppearance() }
@@ -320,7 +326,7 @@ struct SettingsView: View {
                     }
                 }
 
-                LabeledContent("译文行数") {
+                SettingsRow(label: "译文行数", showDivider: true) {
                     HStack {
                         Slider(value: $model.translationLines, in: 1...4, step: 1) { editing in
                             if !editing { model.commitAppearance() }
@@ -332,7 +338,7 @@ struct SettingsView: View {
                     }
                 }
 
-                LabeledContent("底板不透明度") {
+                SettingsRow(label: "底板不透明度", showDivider: true) {
                     HStack {
                         Slider(value: $model.boxOpacity, in: 0...1, step: 0.05) { editing in
                             if !editing { model.commitAppearance() }
@@ -344,27 +350,35 @@ struct SettingsView: View {
                     }
                 }
 
-                Picker("字母对齐方式", selection: Binding(
-                    get: { settings.alignment },
-                    set: { settings.alignment = $0 }
-                )) {
-                    ForEach(CaptionAlignment.allCases, id: \.self) { option in
-                        Text(option.displayName).tag(option)
+                SettingsRow(label: "字母对齐方式", showDivider: true) {
+                    Picker("", selection: Binding(
+                        get: { settings.alignment },
+                        set: { settings.alignment = $0 }
+                    )) {
+                        ForEach(CaptionAlignment.allCases, id: \.self) { option in
+                            Text(option.displayName).tag(option)
+                        }
                     }
+                    .labelsHidden()
+                    .fixedSize()
                 }
 
-                Picker("显示节奏", selection: Binding(
-                    get: { settings.timing },
-                    set: { settings.timing = $0 }
-                )) {
-                    ForEach(CaptionTiming.allCases, id: \.self) { option in
-                        Text(option.displayName).tag(option)
+                SettingsRow(label: "显示节奏") {
+                    Picker("", selection: Binding(
+                        get: { settings.timing },
+                        set: { settings.timing = $0 }
+                    )) {
+                        ForEach(CaptionTiming.allCases, id: \.self) { option in
+                            Text(option.displayName).tag(option)
+                        }
                     }
+                    .labelsHidden()
+                    .fixedSize()
                 }
             }
 
-            Section("历史字幕") {
-                LabeledContent("回溯数量") {
+            SettingsGroup(title: "历史字幕") {
+                SettingsRow(label: "回溯数量", showDivider: true) {
                     HStack {
                         Slider(value: $model.historyDepth, in: 1...100, step: 1) { editing in
                             if !editing { model.commitAppearance() }
@@ -376,7 +390,7 @@ struct SettingsView: View {
                     }
                 }
 
-                LabeledContent("堆叠间距") {
+                SettingsRow(label: "堆叠间距") {
                     HStack {
                         Slider(value: $model.historySpacing, in: 0...40, step: 1) { editing in
                             if !editing { model.commitAppearance() }
@@ -389,42 +403,54 @@ struct SettingsView: View {
                 }
             }
         }
-        .formStyle(.grouped)
     }
 
     // MARK: - Behaviour
 
     private var behaviourTab: some View {
-        Form {
-            Section("声音") {
-                Picker("聆听对象", selection: Binding(
-                    get: { settings.source },
-                    set: { newValue in
-                        settings.source = newValue
-                        model.requestReconfigure()
+        VStack(alignment: .leading, spacing: 30) {
+            SettingsGroup(title: "声音") {
+                SettingsRow(label: "聆听对象", showDivider: true) {
+                    Picker("", selection: Binding(
+                        get: { settings.source },
+                        set: { newValue in
+                            settings.source = newValue
+                            model.requestReconfigure()
+                        }
+                    )) {
+                        ForEach(AudioSource.allCases, id: \.self) { source in
+                            Text(source.displayName).tag(source)
+                        }
                     }
-                )) {
-                    ForEach(AudioSource.allCases, id: \.self) { source in
-                        Text(source.displayName).tag(source)
-                    }
+                    .labelsHidden()
+                    .fixedSize()
                 }
 
-                Picker("识别语言", selection: Binding(
-                    get: { settings.recognitionLanguage ?? "" },
-                    set: { newValue in
-                        settings.recognitionLanguage = newValue.isEmpty ? nil : newValue
-                        model.requestReconfigure()
+                SettingsRow(label: "识别语言") {
+                    Picker("", selection: Binding(
+                        get: { settings.recognitionLanguage ?? "" },
+                        set: { newValue in
+                            settings.recognitionLanguage = newValue.isEmpty ? nil : newValue
+                            model.requestReconfigure()
+                        }
+                    )) {
+                        Text("自动检测").tag("")
+                        ForEach(LanguageCatalog.all) { language in
+                            Text(language.displayName).tag(language.id)
+                        }
                     }
-                )) {
-                    Text("自动检测").tag("")
-                    ForEach(LanguageCatalog.all) { language in
-                        Text(language.displayName).tag(language.id)
-                    }
+                    .labelsHidden()
+                    .fixedSize()
                 }
             }
 
-            Section("快捷键") {
-                LabeledContent("开始 / 暂停聆听") {
+            SettingsGroup(
+                title: "快捷键",
+                footer: model.shortcutStatus.isEmpty
+                    ? "点一下下面的方框，然后按下想用的组合键（至少含 ⌘、⌥ 或 ⌃），在任何 App 里都生效。"
+                    : model.shortcutStatus
+            ) {
+                SettingsRow(label: "开始 / 暂停聆听") {
                     HStack(spacing: 8) {
                         ShortcutRecorderView(shortcut: Binding(
                             get: { settings.keyboardShortcut },
@@ -433,131 +459,167 @@ struct SettingsView: View {
                                 model.shortcutChanged()
                             }
                         ))
-                        .frame(width: 190, height: 26)
+                        .frame(width: 170, height: 26)
 
                         Button("恢复默认") {
                             settings.keyboardShortcut = .default
                             model.shortcutChanged()
                         }
-                    }
-                }
-
-                Text(model.shortcutStatus.isEmpty
-                     ? "点一下上面的方框，然后按下想用的组合键（至少含 ⌘、⌥ 或 ⌃）。在任何 App 里都生效。"
-                     : model.shortcutStatus)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Section("翻译") {
-                Picker("翻译为", selection: Binding(
-                    get: { settings.translationTarget ?? "" },
-                    set: { newValue in
-                        settings.translationTarget = newValue.isEmpty ? nil : newValue
-                        model.requestReconfigure()
-                    }
-                )) {
-                    Text("关闭").tag("")
-                    ForEach(LanguageCatalog.all) { language in
-                        Text(language.displayName).tag(language.id)
-                    }
-                }
-
-                Picker("翻译引擎", selection: Binding(
-                    get: { settings.translationEngine },
-                    set: { engine in
-                        settings.translationEngine = engine
-                        model.engineChanged()
-                    }
-                )) {
-                    ForEach(ModelEngine.allCases, id: \.self) { engine in
-                        Text(engine.displayName).tag(engine)
-                    }
-                }
-
-                Toggle("同时显示两种语言", isOn: Binding(
-                    get: { settings.showBothLanguages },
-                    set: { settings.showBothLanguages = $0 }
-                ))
-
-                Picker("朗读译文", selection: Binding(
-                    get: { settings.speakMode },
-                    set: { settings.speakMode = $0 }
-                )) {
-                    ForEach(SpeakMode.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
+                        .fixedSize()
                     }
                 }
             }
-
-            Section("AI 摘要") {
-                Picker("摘要引擎", selection: Binding(
-                    get: { settings.summaryEngine },
-                    set: { settings.summaryEngine = $0 }
-                )) {
-                    ForEach(ModelEngine.allCases, id: \.self) { engine in
-                        Text(engine.displayName).tag(engine)
+            SettingsGroup(title: "翻译") {
+                SettingsRow(label: "翻译为", showDivider: true) {
+                    Picker("", selection: Binding(
+                        get: { settings.translationTarget ?? "" },
+                        set: { newValue in
+                            settings.translationTarget = newValue.isEmpty ? nil : newValue
+                            model.requestReconfigure()
+                        }
+                    )) {
+                        Text("关闭").tag("")
+                        ForEach(LanguageCatalog.all) { language in
+                            Text(language.displayName).tag(language.id)
+                        }
                     }
+                    .labelsHidden()
+                    .fixedSize()
                 }
 
-                Text("录制结束时会问你要不要保存，选了「生成摘要」才用到这里挑的模型。语音识别始终在本机，不受这里影响。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                SettingsRow(label: "翻译引擎", showDivider: true) {
+                    Picker("", selection: Binding(
+                        get: { settings.translationEngine },
+                        set: { engine in
+                            settings.translationEngine = engine
+                            model.engineChanged()
+                        }
+                    )) {
+                        ForEach(ModelEngine.allCases, id: \.self) { engine in
+                            Text(engine.displayName).tag(engine)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+
+                SettingsRow(label: "同时显示两种语言", showDivider: true) {
+                    Toggle("", isOn: Binding(
+                        get: { settings.showBothLanguages },
+                        set: { settings.showBothLanguages = $0 }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
+
+                SettingsRow(label: "朗读译文") {
+                    Picker("", selection: Binding(
+                        get: { settings.speakMode },
+                        set: { settings.speakMode = $0 }
+                    )) {
+                        ForEach(SpeakMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
             }
 
-            Section("云端 API") {
-                TextField("接口地址", text: $model.cloudBaseURL, prompt: Text("https://api.openai.com/v1"))
-                    .onSubmit { model.commitCloud() }
-                    .onChange(of: model.cloudBaseURL) { _, _ in model.scheduleModelDetection() }
-
-                SecureField("API Key（留空沿用已保存的）", text: $model.cloudAPIKey)
-                    .onSubmit { model.commitCloud() }
-                    .onChange(of: model.cloudAPIKey) { _, _ in model.scheduleModelDetection() }
-
-                modelPicker("翻译模型", selection: $model.cloudTranslationModel)
-                modelPicker("总结模型", selection: $model.cloudSummaryModel)
-
-                HStack(spacing: 12) {
-                    Button("保存配置") { model.commitCloud() }
-                    Button("清除 Key") {
-                        CloudCredentialStore.setAPIKey("")
-                        model.cloudStatus = "已清除保存的 API Key"
+            SettingsGroup(
+                title: "AI 摘要",
+                footer: "录制结束时会问你要不要保存，选了「生成摘要」才用到这里挑的模型。语音识别始终在本机，不受这里影响。"
+            ) {
+                SettingsRow(label: "摘要引擎") {
+                    Picker("", selection: Binding(
+                        get: { settings.summaryEngine },
+                        set: { settings.summaryEngine = $0 }
+                    )) {
+                        ForEach(ModelEngine.allCases, id: \.self) { engine in
+                            Text(engine.displayName).tag(engine)
+                        }
                     }
-                    Button {
-                        model.detectModels()
-                    } label: {
-                        Text(model.isDetectingModels ? "正在获取…" : "获取模型列表")
+                    .labelsHidden()
+                    .fixedSize()
+                }
+            }
+
+            SettingsGroup(
+                title: "云端 API",
+                footer: "兼容 OpenAI 接口的服务都能用（OpenAI、DeepSeek、Moonshot、本地 Ollama 等）。API Key 存在系统钥匙串里，不写进偏好设置。"
+            ) {
+                SettingsRow(label: "接口地址", showDivider: true) {
+                    TextField("", text: $model.cloudBaseURL, prompt: Text("https://api.openai.com/v1"))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 300)
+                        .onSubmit { model.commitCloud() }
+                        .onChange(of: model.cloudBaseURL) { _, _ in model.scheduleModelDetection() }
+                }
+
+                SettingsRow(label: "API Key", showDivider: true) {
+                    SecureField("", text: $model.cloudAPIKey, prompt: Text("留空沿用已保存的"))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 300)
+                        .onSubmit { model.commitCloud() }
+                        .onChange(of: model.cloudAPIKey) { _, _ in model.scheduleModelDetection() }
+                }
+
+                SettingsRow(label: "翻译模型", showDivider: true) {
+                    modelPicker("翻译模型", selection: $model.cloudTranslationModel)
+                }
+
+                SettingsRow(label: "总结模型", showDivider: true) {
+                    modelPicker("总结模型", selection: $model.cloudSummaryModel)
+                }
+
+                SettingsRow(label: "") {
+                    HStack(spacing: 10) {
+                        Button("保存配置") { model.commitCloud() }
+                        Button("清除 Key") {
+                            CloudCredentialStore.setAPIKey("")
+                            model.cloudStatus = "已清除保存的 API Key"
+                        }
+                        Button {
+                            model.detectModels()
+                        } label: {
+                            Text(model.isDetectingModels ? "正在获取…" : "获取模型列表")
+                        }
+                        .disabled(model.isDetectingModels)
+                        Button("测试连接") { model.testCloudConnection() }
                     }
-                    .disabled(model.isDetectingModels)
-                    Button("测试连接") { model.testCloudConnection() }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
 
                 if !model.cloudStatus.isEmpty {
                     Text(model.cloudStatus)
-                        .font(.caption)
+                        .font(.system(size: 12))
                         .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                Text("兼容 OpenAI 接口的服务都能用（OpenAI、DeepSeek、Moonshot、本地 Ollama 等）。API Key 存在系统钥匙串里，不写进偏好设置。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            Section("模型") {
-                Toggle("跳过非语音（音乐、噪声）", isOn: Binding(
-                    get: { settings.skipNonSpeech },
-                    set: { settings.skipNonSpeech = $0 }
-                ))
+            SettingsGroup(title: "模型") {
+                SettingsRow(label: "跳过非语音（音乐、噪声）", showDivider: true) {
+                    Toggle("", isOn: Binding(
+                        get: { settings.skipNonSpeech },
+                        set: { settings.skipNonSpeech = $0 }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
 
-                Toggle("换人说话时另起一块字幕", isOn: Binding(
-                    get: { settings.newBoxOnSpeakerChange },
-                    set: { settings.newBoxOnSpeakerChange = $0 }
-                ))
+                SettingsRow(label: "换人说话时另起一块字幕", showDivider: true) {
+                    Toggle("", isOn: Binding(
+                        get: { settings.newBoxOnSpeakerChange },
+                        set: { settings.newBoxOnSpeakerChange = $0 }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
 
-                LabeledContent("无新文字后淡出") {
+                SettingsRow(label: "无新文字后淡出", showDivider: true) {
                     HStack {
                         Slider(value: $model.fadeDelay, in: 1...12, step: 0.5) { editing in
                             if !editing { model.commitAppearance() }
@@ -569,15 +631,21 @@ struct SettingsView: View {
                     }
                 }
 
-                Toggle("显示来源应用名称", isOn: Binding(
-                    get: { settings.showSourceAppName },
-                    set: { settings.showSourceAppName = $0 }
-                ))
+                SettingsRow(label: "显示来源应用名称") {
+                    Toggle("", isOn: Binding(
+                        get: { settings.showSourceAppName },
+                        set: { settings.showSourceAppName = $0 }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                }
             }
         }
-        .formStyle(.grouped)
     }
 
+    // MARK: - Behaviour
+
+    
     // MARK: - About
 
     private var aboutTab: some View {
