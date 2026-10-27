@@ -156,7 +156,8 @@ public final class CaptionPipeline {
     }
 
     /// Approximate usable width of the overlay box, in points.
-    static let overlayWidth: CGFloat = 1000
+    /// Width the overlay's text is measured against, in points.
+    public static let overlayWidth: CGFloat = 1000
 
     // MARK: - Reading state
 

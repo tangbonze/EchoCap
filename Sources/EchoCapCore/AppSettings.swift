@@ -133,7 +133,7 @@ public final class AppSettings: @unchecked Sendable {
 
     /// How many lines fill one caption box before it is cleared.
     public var linesPerBox: Int {
-        get { defaults.object(forKey: Keys.linesPerBox) as? Int ?? 3 }
+        get { defaults.object(forKey: Keys.linesPerBox) as? Int ?? 4 }
         set { defaults.set(newValue, forKey: Keys.linesPerBox) }
     }
 
@@ -141,29 +141,6 @@ public final class AppSettings: @unchecked Sendable {
     public var boxOpacity: Double {
         get { defaults.object(forKey: Keys.boxOpacity) as? Double ?? 0.55 }
         set { defaults.set(newValue, forKey: Keys.boxOpacity) }
-    }
-
-    /// Radius in points around the pointer where captions dissolve completely.
-    public var pointerDissolveRadius: Double {
-        get { defaults.object(forKey: Keys.dissolveRadius) as? Double ?? 90 }
-        set { defaults.set(newValue, forKey: Keys.dissolveRadius) }
-    }
-
-    /// Distance beyond the radius over which the dissolve fades back in.
-    public var pointerDissolveExtent: Double {
-        get { defaults.object(forKey: Keys.dissolveExtent) as? Double ?? 60 }
-        set { defaults.set(newValue, forKey: Keys.dissolveExtent) }
-    }
-
-    public var fadeAwayUnderPointer: Bool {
-        get { defaults.object(forKey: Keys.fadeUnderPointer) as? Bool ?? true }
-        set { defaults.set(newValue, forKey: Keys.fadeUnderPointer) }
-    }
-
-    /// Allow clicks to pass through the overlay to the app underneath.
-    public var clickThrough: Bool {
-        get { defaults.object(forKey: Keys.clickThrough) as? Bool ?? true }
-        set { defaults.set(newValue, forKey: Keys.clickThrough) }
     }
 
     public var showSourceAppName: Bool {
@@ -236,10 +213,6 @@ public final class AppSettings: @unchecked Sendable {
         static let timing = "captionTiming"
         static let linesPerBox = "linesPerBox"
         static let boxOpacity = "boxOpacity"
-        static let dissolveRadius = "pointerDissolveRadius"
-        static let dissolveExtent = "pointerDissolveExtent"
-        static let fadeUnderPointer = "fadeAwayUnderPointer"
-        static let clickThrough = "clickThrough"
         static let showSourceApp = "showSourceAppName"
         static let historyDepth = "historyDepth"
         static let historySpacing = "historySpacing"

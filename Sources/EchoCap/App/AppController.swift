@@ -34,7 +34,6 @@ final class AppController {
     private var displayTimer: Timer?
 
     /// Timer that watches the pointer so captions can dissolve under it.
-    private var pointerTimer: Timer?
 
     /// The language the recogniser is currently using.
     private var activeRecognitionLanguage: Locale?
@@ -133,7 +132,6 @@ final class AppController {
         overlay.displayIfNeeded()
 
         startDisplayTimer()
-        startPointerTimer()
     }
 
     private func startDisplayTimer() {
@@ -142,29 +140,6 @@ final class AppController {
             self?.refreshDisplay()
         }
         RunLoop.main.add(displayTimer!, forMode: .common)
-    }
-
-    private func startPointerTimer() {
-        pointerTimer?.invalidate()
-        pointerTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-            self?.updatePointer()
-        }
-        RunLoop.main.add(pointerTimer!, forMode: .common)
-    }
-
-    /// Track the pointer so the caption can dissolve under it.
-    private func updatePointer() {
-        guard settings.fadeAwayUnderPointer else {
-            overlayModel.pointerLocation = nil
-            return
-        }
-        let mouse = NSEvent.mouseLocation
-        guard overlay.frame.contains(mouse) else {
-            overlayModel.pointerLocation = nil
-            return
-        }
-        let local = overlay.convertPoint(fromScreen: mouse)
-        overlayModel.pointerMoved(to: local)
     }
 
     // MARK: - Start / Stop
@@ -415,23 +390,68 @@ final class AppController {
             log("\(kind): \(shown)")
         }
 
-        // Translate a segment once the recogniser has settled on it.
-        if update.isFinal, activeTranslationTarget != nil {
-            let source = update.text
-            Task { [weak self] in
-                guard let self else { return }
-                if let translated = await self.translation.translate(source) {
-                    await MainActor.run {
-                        self.pipeline.setTranslation(translated, isFinal: true)
-                        self.log("译文: \(translated)")
-                    }
-                } else {
-                    await MainActor.run { self.log("译文失败（语言组合可能不支持）") }
-                }
-            }
+        // Translate what is on screen, not only finished sentences. Waiting for
+        // the segment to close made the translation trail the captions by
+        // seconds — by the time it appeared, the reader had moved on.
+        if activeTranslationTarget != nil {
+            let onScreen = pipeline.liveBox?.displayText ?? update.text
+            requestTranslation(for: onScreen, isFinal: update.isFinal)
         }
 
         refreshDisplay()
+    }
+
+    // MARK: - Translation
+
+    /// Whether a live translation request is already running.
+    private var translationInFlight = false
+    /// When the last live request was sent, used to throttle.
+    private var lastTranslationRequest = Date.distantPast
+    /// The source text that was last sent, so identical text is not re-sent.
+    private var lastTranslatedSource = ""
+    /// Shortest gap between live translation requests.
+    private static let translationThrottle: TimeInterval = 0.3
+
+    /// Translate `text`, cheaply enough to run while the speaker is talking.
+    ///
+    /// Only one request runs at a time and requests are throttled, so a fast
+    /// talker cannot queue up work faster than the session can answer.
+    private func requestTranslation(for text: String, isFinal: Bool) {
+        let source = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !source.isEmpty else { return }
+
+        let boxID = pipeline.liveBox?.id
+        if !isFinal {
+            guard !translationInFlight else { return }
+            guard source != lastTranslatedSource else { return }
+            guard Date().timeIntervalSince(lastTranslationRequest) >= Self.translationThrottle else {
+                return
+            }
+        }
+
+        translationInFlight = true
+        lastTranslationRequest = Date()
+        lastTranslatedSource = source
+
+        let startedAt = Date()
+        Task { [weak self] in
+            guard let self else { return }
+            let translated = await self.translation.translate(source)
+            self.translationInFlight = false
+            let elapsed = Int(Date().timeIntervalSince(startedAt) * 1000)
+            guard let translated else {
+                if isFinal { self.log("译文失败（语言组合可能不支持）") }
+                return
+            }
+            // A live result belongs to the box that was on screen when the
+            // request went out; by now it may already have scrolled away.
+            if !isFinal, let boxID, self.pipeline.liveBox?.id != boxID {
+                return
+            }
+            self.pipeline.setTranslation(translated, isFinal: isFinal)
+            self.log("译文(\(isFinal ? "定稿" : "实时"), \(elapsed)ms): \(translated)")
+            self.refreshDisplay()
+        }
     }
 
     /// Identify the language of `text` on-device.
@@ -461,7 +481,6 @@ final class AppController {
                 "内容 content=\(overlay.contentView.map { "\($0.frame)" } ?? "nil")"
                 + " container=\(overlayModel.containerSize)"
                 + " fading=\(overlayModel.isFadingOut)"
-                + " pointer=\(overlayModel.pointerLocation.map { "\($0)" } ?? "nil")"
                 + " history=\(overlayModel.historyBoxes.count)"
             )
         }

@@ -42,14 +42,6 @@ struct CaptionOverlayView: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                // The part of the caption under the pointer dissolves away so
-                // it never covers what the user is reading or writing.
-                .dissolveUnderPointer(
-                    location: model.pointerLocation,
-                    radius: model.settings.pointerDissolveRadius,
-                    extent: model.settings.pointerDissolveExtent,
-                    size: proxy.size
-                )
             }
             // A hair of opacity instead of full transparency: a window with
             // `isOpaque = false` and a completely clear root layer gives the
@@ -120,20 +112,28 @@ struct CaptionBoxView: View {
                     .background(Capsule().fill(.quaternary))
             }
 
-            Text(box.displayText)
-                .font(.system(size: settings.fontSize, weight: .semibold))
-                .foregroundStyle(.primary)
-                .multilineTextAlignment(settings.alignment == .center ? .center : .leading)
-                .frame(maxWidth: .infinity, alignment: settings.alignment == .center ? .center : .leading)
-                .fixedSize(horizontal: false, vertical: true)
+            Text(box.visibleText(
+                maxLines: settings.linesPerBox,
+                fontSize: settings.fontSize,
+                width: CaptionPipeline.overlayWidth
+            ))
+            .font(.system(size: settings.fontSize, weight: .semibold))
+            .foregroundStyle(.primary)
+            .multilineTextAlignment(settings.alignment == .center ? .center : .leading)
+            .lineLimit(settings.linesPerBox)
+            .frame(maxWidth: .infinity, alignment: settings.alignment == .center ? .center : .leading)
+            .fixedSize(horizontal: false, vertical: true)
 
             if settings.showBothLanguages, !box.displayTranslation.isEmpty {
+                // One line only: the translation is a reading aid, not a
+                // second caption block competing for screen space.
                 Text(box.displayTranslation)
                     .font(.system(size: settings.fontSize * 0.86, weight: .medium))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(settings.alignment == .center ? .center : .leading)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: settings.alignment == .center ? .center : .leading)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.horizontal, 16)
@@ -200,19 +200,7 @@ final class OverlayModel: ObservableObject {
 
     let settings: AppSettings
 
-    /// Where the pointer is, in the overlay's coordinate space.
-    @Published var pointerLocation: CGPoint?
-
     init(settings: AppSettings) {
         self.settings = settings
-    }
-
-    /// Update the pointer position used for the dissolve effect.
-    func pointerMoved(to point: CGPoint) {
-        guard settings.fadeAwayUnderPointer else {
-            if pointerLocation != nil { pointerLocation = nil }
-            return
-        }
-        pointerLocation = point
     }
 }

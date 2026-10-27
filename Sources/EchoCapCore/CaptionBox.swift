@@ -59,6 +59,52 @@ public struct CaptionBox: Identifiable, Equatable, Sendable {
         displayText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The tail of `displayText` that fits within `maxLines` lines.
+    ///
+    /// A segment that is still being recognised keeps growing between commits,
+    /// so the live box can outgrow the line budget. Rather than let it push the
+    /// overlay taller and taller, the newest words are kept and the oldest drop
+    /// off — the way broadcast captions scroll.
+    ///
+    /// Works for both space-separated languages and CJK, which has no spaces.
+    public func visibleText(maxLines: Int, fontSize: Double, width: Double) -> String {
+        let full = displayText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard maxLines > 0, !full.isEmpty else { return full }
+        guard TextMeasurer.lineCount(text: full, fontSize: fontSize, width: width) > maxLines else {
+            return full
+        }
+
+        let usesSpaces = full.contains(" ")
+        let units: [String] = usesSpaces
+            ? full.split(separator: " ").map(String.init)
+            : full.map(String.init)
+        guard units.count > 1 else { return full }
+
+        func render(from index: Int) -> String {
+            usesSpaces
+                ? units[index...].joined(separator: " ")
+                : units[index...].joined()
+        }
+
+        // Drop leading units until the remainder fits. Line count falls
+        // monotonically as units are dropped, so a binary search is enough.
+        var low = 1
+        var high = units.count - 1
+        var firstKept = units.count - 1
+        while low <= high {
+            let middle = (low + high) / 2
+            if TextMeasurer.lineCount(
+                text: render(from: middle), fontSize: fontSize, width: width
+            ) <= maxLines {
+                firstKept = middle
+                high = middle - 1
+            } else {
+                low = middle + 1
+            }
+        }
+        return render(from: firstKept)
+    }
+
     public var isEmpty: Bool { displayText.isEmpty }
 
     /// True once the box has been sealed into history.
@@ -79,6 +125,9 @@ public struct CaptionBox: Identifiable, Equatable, Sendable {
 
     mutating func setTranslation(_ text: String) {
         translation = text
+        // The live translation has been superseded by the settled one;
+        // keeping both would show the sentence twice.
+        volatileTranslation = ""
     }
 
     mutating func setVolatileTranslation(_ text: String) {

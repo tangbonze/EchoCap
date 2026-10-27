@@ -182,18 +182,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         sourceName.state = controller.settings.showSourceAppName ? .on : .off
         menu.addItem(sourceName)
 
-        // Fade away under pointer
-        let fade = NSMenuItem(
-            title: "指针下方淡出",
-            action: #selector(toggleFadeUnderPointer),
-            keyEquivalent: ""
-        )
-        fade.target = self
-        fade.state = controller.settings.fadeAwayUnderPointer ? .on : .off
-        menu.addItem(fade)
-
-        menu.addItem(.separator())
-
         // Save transcript
         let save = NSMenuItem(title: "存储文字记录…", action: #selector(saveTranscript), keyEquivalent: "s")
         save.keyEquivalentModifierMask = .command
@@ -285,10 +273,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func toggleSourceAppName() {
         controller.settings.showSourceAppName.toggle()
-    }
-
-    @objc private func toggleFadeUnderPointer() {
-        controller.settings.fadeAwayUnderPointer.toggle()
     }
 
     @objc private func saveTranscript() {

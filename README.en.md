@@ -33,7 +33,6 @@ Unlike the original, EchoCap downloads no models. It uses the Speech and Transla
 **Captions**
 - Always-on-top overlay that stays above every window
 - **Never swallows clicks**, so you can keep working in the app underneath
-- **Dissolves under your pointer**, so the text never covers what you are reading or writing
 - Hold `⇧` to drag the overlay; the position is remembered
 - Broadcast-style paging: fills N lines, then clears and starts over
 - Fades about 4 seconds after the last *new* text (not after the audio goes quiet)
@@ -45,12 +44,13 @@ Unlike the original, EchoCap downloads no models. It uses the Speech and Transla
 
 **Translation**
 - Translate into another language and show both at once
+- The translation follows the text on screen in near real time (throttled to about 0.3 s, one request at a time) and is re-checked once the sentence settles, so it never trails the original by seconds
 - Runs on-device; the translation never leaves the machine
 
 **Also**
 - Menu-bar only, no Dock icon
 - Transcripts export as plain text, Markdown, or SRT
-- Settings panel for size, lines per box, box opacity, dissolve radius, stack spacing, and more — all live
+- Settings panel for size, lines per box, box opacity, stack spacing, and more — all live
 
 ### A failed capture never freezes the app — and it tells you why
 
@@ -118,7 +118,7 @@ Sources/
     SpeechEngine.swift        Streaming macOS Speech recognition
     TranslationService.swift   Apple Translation
     CaptionOverlayWindow.swift Always-on-top overlay window
-    CaptionOverlayView.swift   Caption drawing, pointer dissolve, history stack
+    CaptionOverlayView.swift   Caption drawing, history stack
     MenuBarController.swift    Menu bar
     SettingsWindow.swift       Settings panel
     AppController.swift        Wires the whole pipeline together

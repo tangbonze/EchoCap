@@ -25,8 +25,6 @@ enum SettingsTab: String, Hashable, CaseIterable {
 final class SettingsViewModel: ObservableObject {
     @Published var fontSize: Double = 28
     @Published var boxOpacity: Double = 0.55
-    @Published var dissolveRadius: Double = 90
-    @Published var dissolveExtent: Double = 60
     @Published var linesPerBox: Double = 3
     @Published var historySpacing: Double = 8
     @Published var historyDepth: Double = 20
@@ -45,8 +43,6 @@ final class SettingsViewModel: ObservableObject {
 
         fontSize = settings.fontSize
         boxOpacity = settings.boxOpacity
-        dissolveRadius = settings.pointerDissolveRadius
-        dissolveExtent = settings.pointerDissolveExtent
         linesPerBox = Double(settings.linesPerBox)
         historySpacing = settings.historySpacing
         historyDepth = Double(min(settings.historyDepth, 100))
@@ -57,8 +53,6 @@ final class SettingsViewModel: ObservableObject {
     func commitAppearance() {
         settings.fontSize = fontSize
         settings.boxOpacity = boxOpacity
-        settings.pointerDissolveRadius = dissolveRadius
-        settings.pointerDissolveExtent = dissolveExtent
         settings.linesPerBox = Int(linesPerBox)
         settings.historySpacing = historySpacing
         settings.historyDepth = Int(historyDepth)
@@ -192,42 +186,6 @@ struct SettingsView: View {
                         Text(option.displayName).tag(option)
                     }
                 }
-            }
-
-            Section("指针") {
-                LabeledContent("淡出半径") {
-                    HStack {
-                        Slider(value: $model.dissolveRadius, in: 0...240, step: 5) { editing in
-                            if !editing { model.commitAppearance() }
-                        }
-                        .frame(width: 180)
-                        Text("\(Int(model.dissolveRadius))")
-                            .monospacedDigit()
-                            .frame(width: 56, alignment: .leading)
-                    }
-                }
-
-                LabeledContent("淡出过渡") {
-                    HStack {
-                        Slider(value: $model.dissolveExtent, in: 0...200, step: 5) { editing in
-                            if !editing { model.commitAppearance() }
-                        }
-                        .frame(width: 180)
-                        Text("\(Int(model.dissolveExtent))")
-                            .monospacedDigit()
-                            .frame(width: 56, alignment: .leading)
-                    }
-                }
-
-                Toggle("指针下方淡出", isOn: Binding(
-                    get: { settings.fadeAwayUnderPointer },
-                    set: { settings.fadeAwayUnderPointer = $0 }
-                ))
-
-                Toggle("浮层不吃点击", isOn: Binding(
-                    get: { settings.clickThrough },
-                    set: { settings.clickThrough = $0 }
-                ))
             }
 
             Section("历史字幕") {
