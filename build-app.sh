@@ -68,6 +68,13 @@ cat > "${APP}/Contents/Info.plist" <<PLIST
     <string>${APP_NAME}</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <!-- Allow http:// to a locally running model server; everything else
+             still has to be https. -->
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>CFBundleShortVersionString</key>
     <string>${VERSION}</string>
     <key>CFBundleVersion</key>

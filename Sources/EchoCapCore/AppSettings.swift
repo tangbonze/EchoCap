@@ -204,6 +204,37 @@ public final class AppSettings: @unchecked Sendable {
         set { defaults.set(newValue, forKey: Keys.overlayOrigin) }
     }
 
+    // MARK: - Model engines
+
+    /// Whether translation and summarising run on this Mac or in the cloud.
+    public var translationEngine: ModelEngine {
+        get { ModelEngine(rawValue: defaults.string(forKey: Keys.translationEngine) ?? "") ?? .local }
+        set { defaults.set(newValue.rawValue, forKey: Keys.translationEngine) }
+    }
+
+    public var summaryEngine: ModelEngine {
+        get { ModelEngine(rawValue: defaults.string(forKey: Keys.summaryEngine) ?? "") ?? .local }
+        set { defaults.set(newValue.rawValue, forKey: Keys.summaryEngine) }
+    }
+
+    /// Base URL of an OpenAI-compatible endpoint, e.g. https://api.openai.com/v1
+    public var cloudBaseURL: String {
+        get { defaults.string(forKey: Keys.cloudBaseURL) ?? "" }
+        set { defaults.set(newValue, forKey: Keys.cloudBaseURL) }
+    }
+
+    /// Model used for cloud translation, e.g. gpt-4o-mini.
+    public var cloudTranslationModel: String {
+        get { defaults.string(forKey: Keys.cloudTranslationModel) ?? "" }
+        set { defaults.set(newValue, forKey: Keys.cloudTranslationModel) }
+    }
+
+    /// Model used for cloud summarising.
+    public var cloudSummaryModel: String {
+        get { defaults.string(forKey: Keys.cloudSummaryModel) ?? "" }
+        set { defaults.set(newValue, forKey: Keys.cloudSummaryModel) }
+    }
+
     /// Overlay size as "width,height". `nil` means the default size.
     public var overlaySize: String? {
         get { defaults.string(forKey: Keys.overlaySize) }
@@ -235,5 +266,10 @@ public final class AppSettings: @unchecked Sendable {
         static let fadeDelay = "fadeDelay"
         static let overlayOrigin = "overlayOrigin"
         static let overlaySize = "overlaySize"
+        static let translationEngine = "translationEngine"
+        static let summaryEngine = "summaryEngine"
+        static let cloudBaseURL = "cloudBaseURL"
+        static let cloudTranslationModel = "cloudTranslationModel"
+        static let cloudSummaryModel = "cloudSummaryModel"
     }
 }

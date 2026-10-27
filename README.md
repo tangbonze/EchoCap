@@ -39,6 +39,19 @@
 - 译文行数默认 2 行，字号略小，放在原文下面当阅读辅助
 - 无新文字约 4 秒后淡出（按"最后一次出现新文字"算，不是按音频静默算）
 
+**选哪个模型**
+- **语音识别永远在本机**：用的是 macOS 自带的 Speech 框架，音频不出设备，这一项没有云端选项。
+- **翻译**、**摘要**各有「本机模型 / 云端 API」两档，可以分开选：
+  - 本机：Apple Translation / Apple 智能（端侧大模型）
+  - 云端：任何 OpenAI 兼容接口（OpenAI、DeepSeek、Moonshot、本地 Ollama…），在设置里填接口地址、API Key、两个模型名
+- API Key 存在**系统钥匙串**里，不写进偏好设置文件；设置面板里有「测试连接」。
+- 中文译文统一折成简体（Apple 的中文模型简繁共用一套，会在同一段里混出两种字形）。
+
+**录制结束会问你要不要留下来**
+- 暂停（`⌥⌘S`）或从菜单退出时，如果这一轮有字幕，会弹窗：共几条、多久，要保存吗？
+- 勾选「用 AI 生成摘要」就顺手生成一份要点，摘要会写进 Markdown 文件开头，并单独开窗显示（可复制）。
+- 摘要模型不可用时，勾选框会写清原因（例如这台 Mac 不满足 Apple 智能的条件），可以改用云端。
+
 **回溯与搜索**
 - 按住 `⌥` 把最近几块字幕叠回当前字幕上方
 - `⌥F` 搜索历史字幕
@@ -92,6 +105,13 @@ open .build/EchoCap.app
 ### 命令行诊断
 
 ```bash
+# 命令行调试参数
+.build/debug/EchoCap --show-settings behaviour      # 打开设置的行为页（截图用）
+.build/debug/EchoCap --test-prompt                  # 直接弹出「录制结束」提示
+.build/debug/EchoCap --set-api-key sk-xxx           # 写入 / 清除（传空串）云端 API Key
+.build/debug/EchoCap --overlay-frame 200,500,900,240  # 指定浮层位置与大小
+.build/debug/EchoCap --edit-layout                  # 启动即进入浮层调整模式
+
 # 打印实时识别与翻译到 stderr
 .build/debug/EchoCap --log --lang en-US --translate zh-Hans
 

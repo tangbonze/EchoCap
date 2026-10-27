@@ -2,18 +2,16 @@ import Foundation
 import Translation
 import EchoCapCore
 
-/// Wraps Apple's on-device Translation framework.
+/// Translates caption text, either with Apple's on-device Translation framework
+/// or with a cloud model the user configured.
 ///
-/// Like the recogniser, translation runs entirely on the machine — nothing is
-/// sent to a server, and no language pair needs an account.
-///
-/// The service is an actor because a `TranslationSession` is stateful: it
-/// holds the loaded models for one language pair, and only one translation
-/// may use it at a time.
+/// The service is an actor because a `TranslationSession` is stateful: it holds
+/// the loaded models for one language pair, and only one translation may use it
+/// at a time. The cloud path goes through the same actor, which keeps the number
+/// of in-flight requests down to one.
 actor TranslationService {
     // `LanguageAvailability` and `TranslationSession` are not `Sendable`, but
     // this actor serialises every access to them, so the isolation is sound.
-
 
     enum TranslationError: Error, LocalizedError {
         case unsupportedPair
@@ -38,13 +36,29 @@ actor TranslationService {
     /// The language pair currently loaded.
     private(set) var currentPair: (source: Locale.Language, target: Locale.Language)?
 
+    /// Which engine is in use.
+    private(set) var engine: ModelEngine = .local
+
+    /// Why the last translation failed, if it did.
+    private(set) var lastError: String?
+
+    /// Cloud endpoint, when `engine` is `.cloud`.
+    private var cloud = CloudLLMConfig(baseURL: "", apiKey: "", model: "")
+
+    /// English name of the target language, for the cloud prompt.
+    private var targetName = ""
+
     /// Whether results need folding to Simplified Chinese.
     ///
     /// Apple's Chinese model is one model for both scripts and does not honour
-    /// the requested variant reliably — the same session will hand back
-    /// Simplified for one sentence and Traditional for the next. Folding every
-    /// result keeps the captions in one script.
+    /// the requested variant reliably — the same session hands back Simplified
+    /// for one sentence and Traditional for the next. Cloud models have the same
+    /// habit, so both paths are folded.
     private var foldToSimplifiedChinese = false
+
+    private let cloudClient = CloudLLMClient()
+
+    // MARK: - Configuration
 
     /// Check whether a translation pair can be used at all.
     func isAvailable(from source: Locale.Language, to target: Locale.Language) async -> Bool {
@@ -52,55 +66,135 @@ actor TranslationService {
         return status == .installed || status == .supported
     }
 
-    /// Configure the service for a language pair. Returns `false` when the pair
-    /// is not supported by the system.
+    /// Configure the service for a language pair and an engine.
+    ///
+    /// - Returns: `false` when the chosen engine cannot serve this pair.
     @discardableResult
-    func configure(source: Locale.Language, target: Locale.Language) async -> Bool {
-        let key = "\(source.maximalIdentifier)->\(target.maximalIdentifier)"
-        if sessionKey == key, session != nil { return true }
+    func configure(
+        source: Locale.Language,
+        target: Locale.Language,
+        engine: ModelEngine,
+        cloud: CloudLLMConfig,
+        targetName: String
+    ) async -> Bool {
+        self.engine = engine
+        self.cloud = cloud
+        self.targetName = targetName
+        foldToSimplifiedChinese = Self.isSimplifiedChinese(target)
 
-        guard await isAvailable(from: source, to: target) else {
+        switch engine {
+        case .cloud:
+            // Nothing to prepare: the endpoint either answers or it does not.
             session = nil
             sessionKey = nil
-            return false
-        }
-
-        do {
-            let newSession = TranslationSession(installedSource: source, target: target)
-            try await newSession.prepareTranslation()
-            session = newSession
-            sessionKey = key
             currentPair = (source, target)
-            foldToSimplifiedChinese = Self.isSimplifiedChinese(target)
-            return true
-        } catch {
-            session = nil
-            sessionKey = nil
-            return false
+            return cloud.isConfigured
+
+        case .local:
+            let key = "\(source.maximalIdentifier)->\(target.maximalIdentifier)"
+            if sessionKey == key, session != nil { return true }
+
+            guard await isAvailable(from: source, to: target) else {
+                session = nil
+                sessionKey = nil
+                return false
+            }
+
+            do {
+                let newSession = TranslationSession(installedSource: source, target: target)
+                try await newSession.prepareTranslation()
+                session = newSession
+                sessionKey = key
+                currentPair = (source, target)
+                return true
+            } catch {
+                session = nil
+                sessionKey = nil
+                return false
+            }
         }
     }
 
+    // MARK: - Translation
+
     /// Translate `text`. Returns `nil` when translation is not configured.
     func translate(_ text: String) async -> String? {
-        guard let session, !text.isEmpty else { return nil }
-        do {
-            let response = try await session.translate(text)
-            return normalise(response.targetText)
-        } catch {
-            return nil
+        guard !text.isEmpty else { return nil }
+
+        switch engine {
+        case .cloud:
+            guard cloud.isConfigured else { return nil }
+            do {
+                let reply = try await cloudClient.complete(
+                    system: cloudSystemPrompt,
+                    user: text,
+                    config: cloud
+                )
+                lastError = nil
+                return normalise(reply)
+            } catch {
+                lastError = error.localizedDescription
+                return nil
+            }
+
+        case .local:
+            guard let session else {
+                lastError = "本机翻译会话未就绪"
+                return nil
+            }
+            do {
+                let response = try await session.translate(text)
+                lastError = nil
+                return normalise(response.targetText)
+            } catch {
+                lastError = error.localizedDescription
+                return nil
+            }
         }
     }
 
     /// Translate a batch of strings.
     func translate(batch: [String]) async -> [String] {
-        guard let session, !batch.isEmpty else { return [] }
-        do {
-            let requests = batch.map { TranslationSession.Request(sourceText: $0) }
-            let responses = try await session.translations(from: requests)
-            return responses.map { normalise($0.targetText) }
-        } catch {
-            return []
+        guard !batch.isEmpty else { return [] }
+
+        switch engine {
+        case .cloud:
+            // One request per item: a batched prompt is harder to split back up.
+            var results: [String] = []
+            for item in batch {
+                results.append(await translate(item) ?? "")
+            }
+            return results
+
+        case .local:
+            guard let session else { return [] }
+            do {
+                let requests = batch.map { TranslationSession.Request(sourceText: $0) }
+                let responses = try await session.translations(from: requests)
+                return responses.map { normalise($0.targetText) }
+            } catch {
+                return []
+            }
         }
+    }
+
+    /// Release the current session.
+    func reset() {
+        session = nil
+        sessionKey = nil
+        currentPair = nil
+    }
+
+    // MARK: - Helpers
+
+    private var cloudSystemPrompt: String {
+        """
+        You are a subtitle translator. Translate the user's text into \(targetName).
+        Rules:
+        - Output only the translation, with no notes, quotes or explanations.
+        - Keep names, numbers and technical terms accurate.
+        - Match the register of the original: spoken subtitles stay spoken.
+        """
     }
 
     /// Put a result into the requested script, when the target is Chinese.
@@ -118,12 +212,5 @@ actor TranslationService {
             return false
         }
         return script != "Hant"
-    }
-
-    /// Release the current session.
-    func reset() {
-        session = nil
-        sessionKey = nil
-        currentPair = nil
     }
 }

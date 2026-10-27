@@ -38,6 +38,19 @@ Unlike the original, EchoCap downloads no models. It uses the Speech and Transla
 - **Separate line budgets** for the original and the translation — two each by default. The oldest words scroll off instead of the whole box clearing
 - Fades about 4 seconds after the last *new* text (not after the audio goes quiet)
 
+**Which model does what**
+- **Speech recognition is always local.** It uses the Speech framework built into macOS; the audio never leaves the machine. There is no cloud option for it.
+- **Translation** and **summarising** each have a "local / cloud API" switch, set independently:
+  - local: Apple Translation and the on-device Apple Intelligence model
+  - cloud: any OpenAI-compatible endpoint (OpenAI, DeepSeek, Moonshot, a local Ollama…). Fill in the endpoint, an API key and the two model names in Settings.
+- The API key is stored in the **system Keychain**, not in the preferences file. Settings has a "Test connection" button.
+- Chinese output is folded to Simplified — Apple ships one Chinese model for both scripts and switches between them mid-session.
+
+**A recording asks to be kept**
+- Pausing (`⌥⌘S`) or quitting from the menu offers to save the session: how many captions, how long.
+- Tick "summarise with AI" and the summary goes to the top of the Markdown file and into its own window, ready to copy.
+- When the summary model is unavailable the checkbox says why (this Mac does not qualify for Apple Intelligence, for instance) — the cloud engine is the way around it.
+
 **Rewind and search**
 - Hold `⌥` to stack the last few caption boxes back above the live one
 - `⌥F` searches the history

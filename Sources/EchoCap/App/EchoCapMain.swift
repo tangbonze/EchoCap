@@ -27,13 +27,31 @@ struct EchoCapMain {
             return
         }
 
+        // Open the settings window at launch, for screenshots and checks.
+        if arguments.contains("--show-settings") {
+            let tab: SettingsTab = arguments.contains("behaviour") ? .behaviour : .appearance
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                SettingsWindowController.shared.show(initialTab: tab)
+            }
+        }
+
+        // Store a cloud API key without going through the settings window.
+        if arguments.contains("--set-api-key"), let index = arguments.firstIndex(of: "--set-api-key"),
+           index + 1 < arguments.count {
+            CloudCredentialStore.setAPIKey(arguments[index + 1])
+            let stored = CloudCredentialStore.apiKey()
+            print(stored.isEmpty ? "已清除 API Key" : "已保存 API Key（\(stored.count) 字符）")
+            return
+        }
+
         if arguments.contains("--render-settings"), let index = arguments.firstIndex(of: "--render-settings") {
             let output = index + 1 < arguments.count
                 ? URL(fileURLWithPath: arguments[index + 1])
                 : URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
                     .appendingPathComponent("echocap-settings.png")
+            let tab: SettingsTab = arguments.contains("behaviour") ? .behaviour : .appearance
             MainActor.assumeIsolated {
-                UIPreviewRenderer.renderSettings(to: output)
+                UIPreviewRenderer.renderSettings(to: output, tab: tab)
                 print("已渲染设置预览: \(output.path)")
             }
             return
@@ -99,8 +117,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await controller.start() }
     }
 
+    /// Offer to save the recording before the app goes away.
+    ///
+    /// The save panel and the summary run inside this call, so termination is
+    /// deferred until the user is done rather than cutting them off.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let unsaved = controller?.hasUnsavedTranscript ?? false
+        controller?.log("退出请求：未保存的字幕=\(unsaved)")
+        // Asking here does not work: AppKit tears the app down around this
+        // call and a modal panel opened from here returns immediately without
+        // ever being seen. Quitting from the menu asks first instead, before
+        // termination begins.
+        return .terminateNow
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
-        controller?.stop()
+        controller?.stop(askToSave: false)
     }
 
     /// Shut down cleanly when the process is asked to terminate.
@@ -110,9 +142,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// to hand out new taps.
     private func installSignalHandlers() {
         for signalNumber in [SIGTERM, SIGINT] {
+            // Ignore the default disposition first: installing a dispatch
+            // source does not stop the kernel from killing us, so without this
+            // the handler never runs and the app dies without cleaning up.
+            signal(signalNumber, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: signalNumber, queue: .main)
             source.setEventHandler { [weak self] in
-                self?.controller?.stop()
+                self?.controller?.stop(askToSave: false)
                 NSApp.terminate(nil)
             }
             source.resume()

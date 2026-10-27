@@ -61,6 +61,12 @@ final class AppController {
     /// Watches for a capture that runs but never delivers sound.
     private var silenceWatchdog: Task<Void, Never>?
 
+    /// When the current recording session began.
+    private var sessionStartedAt = Date()
+
+    /// True once this session has been offered up for saving.
+    private var hasPromptedSession = false
+
     /// Loudest sample seen since the last report, 0…32767.
     private var peakLevel: Int = 0
 
@@ -164,6 +170,23 @@ final class AppController {
                     display: true
                 )
             }
+        }
+
+        // Test hook: show the end-of-recording prompt immediately.
+        if CommandLine.arguments.contains("--test-prompt") {
+            let now = Date()
+            let box = CaptionBox(
+                committedText: "This is a test caption used to exercise the save prompt.",
+                translation: "这是一条用于测试保存提示的字幕。",
+                sourceAppName: "Test"
+            )
+            SessionSavePrompt.present(
+                boxes: [box],
+                startedAt: now.addingTimeInterval(-125),
+                summaryEngine: settings.summaryEngine,
+                cloud: cloudConfig(model: settings.cloudSummaryModel)
+            )
+            return
         }
 
         if CommandLine.arguments.contains("--edit-layout") {
@@ -325,6 +348,8 @@ final class AppController {
         isRunning = true
         receivedSampleCount = 0
         peakSinceStart = 0
+        sessionStartedAt = Date()
+        hasPromptedSession = false
         statusText = "正在聆听"
         lastError = nil
         startSilenceWatchdog(source: source)
@@ -363,7 +388,11 @@ final class AppController {
     }
 
     /// Stop capturing. The overlay keeps its last caption until it fades.
-    func stop() {
+    ///
+    /// - Parameter askToSave: ask whether to keep this recording once capture
+    ///   has stopped. Off for restarts (source change, reconfigure) and for
+    ///   quitting, which asks in its own way.
+    func stop(askToSave: Bool = true) {
         guard isRunning else { return }
         isRunning = false
         userPaused = true
@@ -373,6 +402,10 @@ final class AppController {
         systemCapture.stop()
         microphoneCapture.stop()
         speech.stop()
+
+        if askToSave {
+            promptSessionEnd()
+        }
     }
 
     /// Toggle between running and paused.
@@ -400,17 +433,47 @@ final class AppController {
         guard settings.source != source else { return }
         settings.source = source
         let wasRunning = isRunning
-        stop()
+        stop(askToSave: false)
         if wasRunning { await start() }
     }
 
     /// Restart recognition with a new language or translation target.
     func reconfigure() async {
         let wasRunning = isRunning
-        stop()
+        stop(askToSave: false)
         assembler.reset()
         pipeline.reset()
         if wasRunning { await start() }
+    }
+
+    // MARK: - Model engines
+
+    /// The cloud endpoint as configured, with the given model name filled in.
+    func cloudConfig(model: String) -> CloudLLMConfig {
+        CloudLLMConfig(
+            baseURL: settings.cloudBaseURL,
+            apiKey: CloudCredentialStore.apiKey(),
+            model: model
+        )
+    }
+
+    /// Whether the chosen engines are ready, for the menu to show.
+    var summaryAvailability: SummaryService.Availability {
+        SummaryService.availability(
+            engine: settings.summaryEngine,
+            cloud: cloudConfig(model: settings.cloudSummaryModel)
+        )
+    }
+
+    /// Re-configure translation after the engine or endpoint changed.
+    func translationSettingsChanged() async {
+        await configureTranslation(
+            recognitionLocale: activeRecognitionLanguage,
+            target: activeTranslationTarget
+        )
+        // A different endpoint may answer at a different speed; give the cloud
+        // path a little more room before the next request.
+        translationThrottle = settings.translationEngine == .cloud ? 0.8 : 0.3
     }
 
     // MARK: - Translation
@@ -433,7 +496,16 @@ final class AppController {
             source = Locale.Language(identifier: "en")
         }
 
-        _ = await translation.configure(source: source, target: target.language)
+        let ok = await translation.configure(
+            source: source,
+            target: target.language,
+            engine: settings.translationEngine,
+            cloud: cloudConfig(model: settings.cloudTranslationModel),
+            targetName: target.englishName
+        )
+        if !ok {
+            log("翻译引擎不可用：\(settings.translationEngine.displayName)")
+        }
     }
     // MARK: - Recognition handling
 
@@ -493,8 +565,9 @@ final class AppController {
     private var lastTranslationRequest = Date.distantPast
     /// The source text that was last sent, so identical text is not re-sent.
     private var lastTranslatedSource = ""
-    /// Shortest gap between live translation requests.
-    private static let translationThrottle: TimeInterval = 0.3
+    /// Shortest gap between live translation requests. A cloud round trip is
+    /// slower, so it gets more room.
+    private var translationThrottle: TimeInterval = 0.3
 
     /// Translate `text`, cheaply enough to run while the speaker is talking.
     ///
@@ -508,7 +581,7 @@ final class AppController {
         if !isFinal {
             guard !translationInFlight else { return }
             guard source != lastTranslatedSource else { return }
-            guard Date().timeIntervalSince(lastTranslationRequest) >= Self.translationThrottle else {
+            guard Date().timeIntervalSince(lastTranslationRequest) >= translationThrottle else {
                 return
             }
         }
@@ -524,7 +597,8 @@ final class AppController {
             self.translationInFlight = false
             let elapsed = Int(Date().timeIntervalSince(startedAt) * 1000)
             guard let translated else {
-                if isFinal { self.log("译文失败（语言组合可能不支持）") }
+                let reason = await self.translation.lastError ?? "未知原因"
+                self.log("译文失败：\(reason)")
                 return
             }
             // A live result belongs to the box that was on screen when the
@@ -668,6 +742,44 @@ final class AppController {
             boxes.append(live)
         }
         return boxes
+    }
+
+    /// Whether this session has captions the user has not been asked about.
+    var hasUnsavedTranscript: Bool {
+        !hasPromptedSession && !allBoxes.isEmpty
+    }
+
+    /// Ask whether to keep the recording that just ended.
+    ///
+    /// - Parameter onFinish: called once the user is done, saved or not.
+    func promptSessionEnd(onFinish: (() -> Void)? = nil) {
+        guard !hasPromptedSession else {
+            onFinish?()
+            return
+        }
+        let boxes = allBoxes
+        guard !boxes.isEmpty else {
+            onFinish?()
+            return
+        }
+        hasPromptedSession = true
+        SessionSavePrompt.present(
+            boxes: boxes,
+            startedAt: sessionStartedAt,
+            summaryEngine: settings.summaryEngine,
+            cloud: cloudConfig(model: settings.cloudSummaryModel),
+            onFinish: onFinish
+        )
+    }
+
+    /// Quit, offering to keep the recording on the way out.
+    ///
+    /// Asking from the menu works; asking from `applicationShouldTerminate`
+    /// does not, because AppKit is already tearing the app down by then.
+    func requestQuit() {
+        promptSessionEnd {
+            NSApp.terminate(nil)
+        }
     }
 
     /// Save the transcript to a file.

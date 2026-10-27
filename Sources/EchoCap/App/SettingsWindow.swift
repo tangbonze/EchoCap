@@ -22,6 +22,7 @@ enum SettingsTab: String, Hashable, CaseIterable {
 ///
 /// The panel drives these values with sliders and pickers, and writes them
 /// back to `AppSettings` as they change.
+@MainActor
 final class SettingsViewModel: ObservableObject {
     @Published var fontSize: Double = 28
     @Published var boxOpacity: Double = 0.55
@@ -33,6 +34,17 @@ final class SettingsViewModel: ObservableObject {
     /// The tab on screen. Lives here rather than in `@State` so the app target
     /// does not need the SwiftUI macro plugin.
     @Published var selectedTab: SettingsTab = .appearance
+
+    // Cloud endpoint
+    @Published var cloudBaseURL: String = ""
+    @Published var cloudTranslationModel: String = ""
+    @Published var cloudSummaryModel: String = ""
+    @Published var cloudAPIKey: String = ""
+    @Published var cloudStatus: String = ""
+
+    /// Called when the translation engine changed, so the app can swap without
+    /// restarting the whole recogniser.
+    var onEngineChanged: (() -> Void)?
 
     private let settings: AppSettings
     private let onChange: () -> Void
@@ -49,6 +61,50 @@ final class SettingsViewModel: ObservableObject {
         historySpacing = settings.historySpacing
         historyDepth = Double(min(settings.historyDepth, 100))
         fadeDelay = settings.fadeDelay
+        cloudBaseURL = settings.cloudBaseURL
+        cloudTranslationModel = settings.cloudTranslationModel
+        cloudSummaryModel = settings.cloudSummaryModel
+        cloudAPIKey = CloudCredentialStore.apiKey()
+    }
+
+    /// Persist the cloud endpoint and the key (the key goes to the Keychain).
+    func commitCloud() {
+        settings.cloudBaseURL = cloudBaseURL.trimmingCharacters(in: .whitespaces)
+        settings.cloudTranslationModel = cloudTranslationModel.trimmingCharacters(in: .whitespaces)
+        settings.cloudSummaryModel = cloudSummaryModel.trimmingCharacters(in: .whitespaces)
+        CloudCredentialStore.setAPIKey(cloudAPIKey)
+        onEngineChanged?()
+    }
+
+    /// Swap the translation engine without restarting capture.
+    func engineChanged() {
+        commitCloud()
+        onEngineChanged?()
+    }
+
+    /// Try the endpoint with a trivial request.
+    func testCloudConnection() {
+        commitCloud()
+        cloudStatus = "正在连接…"
+        let config = CloudLLMConfig(
+            baseURL: settings.cloudBaseURL,
+            apiKey: CloudCredentialStore.apiKey(),
+            model: !settings.cloudTranslationModel.isEmpty
+                ? settings.cloudTranslationModel
+                : settings.cloudSummaryModel
+        )
+        Task {
+            do {
+                let reply = try await CloudLLMClient(timeout: 15).complete(
+                    system: "Reply with exactly: ok",
+                    user: "ping",
+                    config: config
+                )
+                cloudStatus = "连接成功：\(reply.prefix(60))"
+            } catch {
+                cloudStatus = error.localizedDescription
+            }
+        }
     }
 
     /// Push the current slider values into the persisted settings.
@@ -83,7 +139,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         self.controller = controller
     }
 
-    func show() {
+    func show(initialTab: SettingsTab = .appearance) {
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -91,8 +147,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         }
 
         let settings = AppSettings.shared
-        let model = SettingsViewModel(settings: settings) { [weak self] in
+        let model = SettingsViewModel(settings: settings, onChange: { [weak self] in
             Task { await self?.controller?.reconfigure() }
+        }, initialTab: initialTab)
+        model.onEngineChanged = { [weak self] in
+            Task { await self?.controller?.translationSettingsChanged() }
         }
         let content = SettingsView(model: model, settings: settings)
 
@@ -100,7 +159,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let newWindow = NSWindow(contentViewController: hosting)
         newWindow.title = "EchoCap 设置"
         newWindow.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        newWindow.setContentSize(NSSize(width: 640, height: 580))
+        newWindow.setContentSize(NSSize(width: 640, height: 700))
         newWindow.center()
         newWindow.isReleasedWhenClosed = false
         newWindow.delegate = self
@@ -115,6 +174,9 @@ struct SettingsView: View {
     @ObservedObject var model: SettingsViewModel
     let settings: AppSettings
 
+    /// Panel height. The preview renders taller so every section shows.
+    var frameHeight: CGFloat = 700
+
     var body: some View {
         TabView(selection: $model.selectedTab) {
             appearanceTab
@@ -128,7 +190,7 @@ struct SettingsView: View {
                 .tag(SettingsTab.about)
         }
         .padding(20)
-        .frame(width: 640, height: 580)
+        .frame(width: 640, height: frameHeight)
     }
 
     // MARK: - Appearance
@@ -277,6 +339,18 @@ struct SettingsView: View {
                     }
                 }
 
+                Picker("翻译引擎", selection: Binding(
+                    get: { settings.translationEngine },
+                    set: { engine in
+                        settings.translationEngine = engine
+                        model.engineChanged()
+                    }
+                )) {
+                    ForEach(ModelEngine.allCases, id: \.self) { engine in
+                        Text(engine.displayName).tag(engine)
+                    }
+                }
+
                 Toggle("同时显示两种语言", isOn: Binding(
                     get: { settings.showBothLanguages },
                     set: { settings.showBothLanguages = $0 }
@@ -290,6 +364,49 @@ struct SettingsView: View {
                         Text(mode.displayName).tag(mode)
                     }
                 }
+            }
+
+            Section("AI 摘要") {
+                Picker("摘要引擎", selection: Binding(
+                    get: { settings.summaryEngine },
+                    set: { settings.summaryEngine = $0 }
+                )) {
+                    ForEach(ModelEngine.allCases, id: \.self) { engine in
+                        Text(engine.displayName).tag(engine)
+                    }
+                }
+
+                Text("录制结束时会问你要不要保存，选了「生成摘要」才用到这里挑的模型。语音识别始终在本机，不受这里影响。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("云端 API") {
+                TextField("接口地址", text: $model.cloudBaseURL, prompt: Text("https://api.openai.com/v1"))
+                    .onSubmit { model.commitCloud() }
+                SecureField("API Key", text: $model.cloudAPIKey)
+                    .onSubmit { model.commitCloud() }
+                TextField("翻译模型", text: $model.cloudTranslationModel, prompt: Text("gpt-4o-mini"))
+                    .onSubmit { model.commitCloud() }
+                TextField("总结模型", text: $model.cloudSummaryModel, prompt: Text("gpt-4o"))
+                    .onSubmit { model.commitCloud() }
+
+                HStack(spacing: 12) {
+                    Button("保存配置") { model.commitCloud() }
+                    Button("测试连接") { model.testCloudConnection() }
+                }
+
+                if !model.cloudStatus.isEmpty {
+                    Text(model.cloudStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Text("兼容 OpenAI 接口的服务都能用（OpenAI、DeepSeek、Moonshot、本地 Ollama 等）。API Key 存在系统钥匙串里，不写进偏好设置。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("模型") {

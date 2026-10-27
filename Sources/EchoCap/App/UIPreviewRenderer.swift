@@ -13,16 +13,28 @@ enum UIPreviewRenderer {
     static func renderAbout(to url: URL, size: CGSize = CGSize(width: 640, height: 760)) {
         let settings = AppSettings.shared
         let model = SettingsViewModel(settings: settings, onChange: {}, initialTab: .about)
-        let view = SettingsView(model: model, settings: settings)
+        let view = SettingsView(
+            model: model,
+            settings: settings,
+            frameHeight: size.height - 40
+        )
         render(view, to: url, size: size)
     }
 
     /// Render the settings window's first tab, for checking the controls
     /// without opening a window.
-    static func renderSettings(to url: URL, size: CGSize = CGSize(width: 640, height: 580)) {
+    static func renderSettings(
+        to url: URL,
+        tab: SettingsTab = .appearance,
+        size: CGSize = CGSize(width: 640, height: 1560)
+    ) {
         let settings = AppSettings.shared
-        let model = SettingsViewModel(settings: settings, onChange: {}, initialTab: .appearance)
-        let view = SettingsView(model: model, settings: settings)
+        let model = SettingsViewModel(settings: settings, onChange: {}, initialTab: tab)
+        let view = SettingsView(
+            model: model,
+            settings: settings,
+            frameHeight: size.height - 40
+        )
         render(view, to: url, size: size)
     }
 

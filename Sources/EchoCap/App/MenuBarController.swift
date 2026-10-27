@@ -315,6 +315,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     @objc private func quit() {
-        NSApp.terminate(nil)
+        controller.requestQuit()
     }
 }
