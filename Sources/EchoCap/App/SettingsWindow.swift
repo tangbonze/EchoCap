@@ -433,7 +433,7 @@ struct SettingsView: View {
                                 model.shortcutChanged()
                             }
                         ))
-                        .frame(width: 150, height: 24)
+                        .frame(width: 190, height: 26)
 
                         Button("恢复默认") {
                             settings.keyboardShortcut = .default
@@ -592,6 +592,9 @@ struct SettingsView: View {
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity)
         }
+        // Form 自带窗口底色；这一页是 ScrollView，需要显式给同样的背景，
+        // 否则离屏渲染时是透明的（看起来像黑底）。
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     // MARK: - Header
@@ -688,7 +691,6 @@ struct SettingsView: View {
                 KeyHintRow(keys: "⌥F", label: "搜索历史字幕")
                 KeyHintRow(keys: "⇧", label: "按住拖动浮层")
                 KeyHintRow(keys: "⌥⌘L", label: "调整浮层位置与大小（可拖动、可拉伸）")
-                KeyHintRow(keys: "⌘,", label: "打开设置")
                 KeyHintRow(keys: "Esc", label: "关闭历史堆叠")
             }
             .padding(.horizontal, 16)

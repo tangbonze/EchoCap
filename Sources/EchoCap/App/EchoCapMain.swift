@@ -30,7 +30,9 @@ struct EchoCapMain {
 
         // Open the settings window at launch, for screenshots and checks.
         if arguments.contains("--show-settings") {
-            let tab: SettingsTab = arguments.contains("behaviour") ? .behaviour : .appearance
+            let tab: SettingsTab = arguments.contains("behaviour")
+                ? .behaviour
+                : (arguments.contains("about") ? .about : .appearance)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                 SettingsWindowController.shared.show(initialTab: tab)
             }

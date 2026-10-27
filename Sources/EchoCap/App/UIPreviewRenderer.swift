@@ -91,7 +91,10 @@ enum UIPreviewRenderer {
 
     /// Render a SwiftUI view into a PNG file.
     private static func render(_ view: some View, to url: URL, size: CGSize) {
-        let hosting = NSHostingView(rootView: view)
+        // Fill the whole canvas with the window background: a transparent
+        // margin around the content reads as a black frame once saved to PNG.
+        let filled = view.background(Color(nsColor: .windowBackgroundColor))
+        let hosting = NSHostingView(rootView: filled)
         hosting.frame = NSRect(origin: .zero, size: size)
         hosting.layoutSubtreeIfNeeded()
         hosting.displayIfNeeded()
