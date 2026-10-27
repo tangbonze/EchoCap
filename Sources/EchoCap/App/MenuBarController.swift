@@ -161,8 +161,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         layout.state = controller.isEditingLayout ? .on : .off
         menu.addItem(layout)
 
-        // Settings
-        let settingsItem = NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ",")
+        // Settings. No key equivalent: one is not assigned, and macOS otherwise
+        // puts a gear glyph next to this item that none of the others have.
+        let settingsItem = NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
         self.settingsItem = settingsItem
