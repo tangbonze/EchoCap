@@ -50,6 +50,16 @@ final class SettingsViewModel: ObservableObject {
     /// restarting the whole recogniser.
     var onEngineChanged: (() -> Void)?
 
+    /// Called after the shortcut changed, so the app can re-register it.
+    var onShortcutChanged: (() -> Void)?
+
+    /// Result of the last shortcut registration attempt.
+    @Published var shortcutStatus: String = ""
+
+    func shortcutChanged() {
+        onShortcutChanged?()
+    }
+
     private let settings: AppSettings
     private let onChange: () -> Void
 
@@ -68,7 +78,9 @@ final class SettingsViewModel: ObservableObject {
         cloudBaseURL = settings.cloudBaseURL
         cloudTranslationModel = settings.cloudTranslationModel
         cloudSummaryModel = settings.cloudSummaryModel
-        cloudAPIKey = CloudCredentialStore.apiKey()
+        // Not read here on purpose: touching the Keychain makes macOS ask for
+        // permission, and the field can stay empty to mean "keep the saved one".
+        cloudAPIKey = ""
     }
 
     /// Persist the cloud endpoint and the key (the key goes to the Keychain).
@@ -76,7 +88,12 @@ final class SettingsViewModel: ObservableObject {
         settings.cloudBaseURL = cloudBaseURL.trimmingCharacters(in: .whitespaces)
         settings.cloudTranslationModel = cloudTranslationModel.trimmingCharacters(in: .whitespaces)
         settings.cloudSummaryModel = cloudSummaryModel.trimmingCharacters(in: .whitespaces)
-        CloudCredentialStore.setAPIKey(cloudAPIKey)
+        let typedKey = cloudAPIKey.trimmingCharacters(in: .whitespaces)
+        if !typedKey.isEmpty {
+            CloudCredentialStore.setAPIKey(typedKey)
+            cloudAPIKey = ""
+            cloudStatus = "API Key 已保存到钥匙串"
+        }
         onEngineChanged?()
     }
 
@@ -99,7 +116,7 @@ final class SettingsViewModel: ObservableObject {
         detectionTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 700_000_000)
             guard !Task.isCancelled, let self else { return }
-            self.detectModels(announceFailure: false)
+            self.detectModels(announceFailure: false, useStoredKey: false)
         }
     }
 
@@ -107,11 +124,18 @@ final class SettingsViewModel: ObservableObject {
     private let cloudClient = CloudLLMClient(timeout: 15)
 
     /// Ask the endpoint which models it offers, and fill the pickers.
-    func detectModels(announceFailure: Bool = true) {
+    ///
+    /// - Parameter useStoredKey: read the Keychain for the API key. Off for the
+    ///   automatic attempt so opening the panel never triggers a Keychain
+    ///   permission prompt; on when the user asks for the list explicitly.
+    func detectModels(announceFailure: Bool = true, useStoredKey: Bool = true) {
         commitCloud()
+        let key = useStoredKey
+            ? CloudCredentialStore.apiKey()
+            : cloudAPIKey.trimmingCharacters(in: .whitespaces)
         let config = CloudLLMConfig(
             baseURL: settings.cloudBaseURL,
-            apiKey: CloudCredentialStore.apiKey(),
+            apiKey: key,
             model: "-"
         )
         guard !config.baseURL.isEmpty else {
@@ -150,7 +174,7 @@ final class SettingsViewModel: ObservableObject {
     func testCloudConnection() {
         commitCloud()
         cloudStatus = "正在连接…"
-        detectModels(announceFailure: false)
+        detectModels(announceFailure: false, useStoredKey: true)
         let config = CloudLLMConfig(
             baseURL: settings.cloudBaseURL,
             apiKey: CloudCredentialStore.apiKey(),
@@ -217,6 +241,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         }, initialTab: initialTab)
         model.onEngineChanged = { [weak self] in
             Task { await self?.controller?.translationSettingsChanged() }
+        }
+        model.onShortcutChanged = { [weak self] in
+            guard let controller = self?.controller else { return }
+            let ok = controller.reloadHotKey()
+            model.shortcutStatus = ok ? "已生效" : "注册失败：可能被别的程序占用，换一个试试"
         }
         // Fill the model pickers straight away when an endpoint is configured.
         model.scheduleModelDetection()
@@ -394,6 +423,33 @@ struct SettingsView: View {
                 }
             }
 
+            Section("快捷键") {
+                LabeledContent("开始 / 暂停聆听") {
+                    HStack(spacing: 8) {
+                        ShortcutRecorderView(shortcut: Binding(
+                            get: { settings.keyboardShortcut },
+                            set: { newValue in
+                                settings.keyboardShortcut = newValue
+                                model.shortcutChanged()
+                            }
+                        ))
+                        .frame(width: 150, height: 24)
+
+                        Button("恢复默认") {
+                            settings.keyboardShortcut = .default
+                            model.shortcutChanged()
+                        }
+                    }
+                }
+
+                Text(model.shortcutStatus.isEmpty
+                     ? "点一下上面的方框，然后按下想用的组合键（至少含 ⌘、⌥ 或 ⌃）。在任何 App 里都生效。"
+                     : model.shortcutStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section("翻译") {
                 Picker("翻译为", selection: Binding(
                     get: { settings.translationTarget ?? "" },
@@ -455,7 +511,7 @@ struct SettingsView: View {
                     .onSubmit { model.commitCloud() }
                     .onChange(of: model.cloudBaseURL) { _, _ in model.scheduleModelDetection() }
 
-                SecureField("API Key", text: $model.cloudAPIKey)
+                SecureField("API Key（留空沿用已保存的）", text: $model.cloudAPIKey)
                     .onSubmit { model.commitCloud() }
                     .onChange(of: model.cloudAPIKey) { _, _ in model.scheduleModelDetection() }
 
@@ -464,6 +520,10 @@ struct SettingsView: View {
 
                 HStack(spacing: 12) {
                     Button("保存配置") { model.commitCloud() }
+                    Button("清除 Key") {
+                        CloudCredentialStore.setAPIKey("")
+                        model.cloudStatus = "已清除保存的 API Key"
+                    }
                     Button {
                         model.detectModels()
                     } label: {
@@ -623,7 +683,7 @@ struct SettingsView: View {
             cardHeader("快捷键", icon: "command")
 
             VStack(spacing: 7) {
-                KeyHintRow(keys: "⌥⌘S", label: "暂停 / 继续字幕")
+                KeyHintRow(keys: settings.keyboardShortcut.displayString, label: "开始 / 暂停聆听（任何 App 里都可用）")
                 KeyHintRow(keys: "⌥", label: "按住回溯，堆叠历史字幕")
                 KeyHintRow(keys: "⌥F", label: "搜索历史字幕")
                 KeyHintRow(keys: "⇧", label: "按住拖动浮层")

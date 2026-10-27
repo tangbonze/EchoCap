@@ -61,6 +61,12 @@ final class AppController {
     /// Watches for a capture that runs but never delivers sound.
     private var silenceWatchdog: Task<Void, Never>?
 
+    /// The ◊ start/stop shortcut, re-registered whenever the user changes it.
+    private var hotKey: GlobalHotKey?
+
+    /// Told when the capture state changes, so the menu bar can follow.
+    var onStateChanged: (() -> Void)?
+
     /// True while the saved geometry is being applied at launch, so the
     /// half-applied frame is not written back over the saved values.
     private var isRestoringGeometry = false
@@ -199,6 +205,8 @@ final class AppController {
             return
         }
 
+        reloadHotKey()
+
         if CommandLine.arguments.contains("--edit-layout") {
             setLayoutEditing(true)
         }
@@ -248,7 +256,6 @@ final class AppController {
     /// Begin capturing and captioning.
     func start() async {
         guard !isRunning else { return }
-        userPaused = false
 
         // Recogniser language.
         let recognitionLocale: Locale?
@@ -347,9 +354,8 @@ final class AppController {
                 detail: hint ?? error.localizedDescription
             )
             await speech.finish()
-            // The audio server sometimes recovers on its own — for instance
-            // when the machine wakes up. Try again shortly.
-            scheduleRetry()
+            // No automatic restart: if the user wants another go they press
+            // ⌥⌘S, which is also what tells them something went wrong.
             return
         }
 
@@ -363,6 +369,7 @@ final class AppController {
         statusText = "正在聆听"
         lastError = nil
         startSilenceWatchdog(source: source)
+        onStateChanged?()
     }
 
     /// Complain if the capture runs but no sound ever arrives.
@@ -405,10 +412,15 @@ final class AppController {
     func stop(askToSave: Bool = true) {
         guard isRunning else { return }
         isRunning = false
-        userPaused = true
         silenceWatchdog?.cancel()
         silenceWatchdog = nil
         statusText = "已暂停"
+        overlayModel.banner = OverlayBanner(
+            kind: .info,
+            title: "已暂停",
+            detail: "按 \(hotKeyLabel) 继续聆听。"
+        )
+        onStateChanged?()
         systemCapture.stop()
         microphoneCapture.stop()
         speech.stop()
@@ -418,25 +430,56 @@ final class AppController {
         }
     }
 
+    /// The shortcut as the user should read it.
+    var hotKeyLabel: String { settings.keyboardShortcut.displayString }
+
+    /// Register the user's start/stop shortcut.
+    ///
+    /// Dropping the old instance first unregisters it, so changing the shortcut
+    /// never leaves two live hot keys behind.
+    @discardableResult
+    func reloadHotKey() -> Bool {
+        hotKey = nil
+        let shortcut = settings.keyboardShortcut
+        let registered = GlobalHotKey(
+            keyCode: shortcut.keyCode,
+            modifiers: shortcut.carbonModifiers
+        ) { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.log("快捷键触发")
+                await self?.toggle()
+            }
+        }
+        hotKey = registered
+        if registered.isRegistered {
+            log("快捷键已注册：\(shortcut.displayString)")
+        } else {
+            log("快捷键注册失败（可能已被其他程序占用）：\(shortcut.displayString)")
+        }
+        return registered.isRegistered
+    }
+
+    /// Nothing is running: tell the user how to begin.
+    ///
+    /// Called at launch instead of starting the capture, so the app never
+    /// begins listening on its own.
+    func enterIdleState() {
+        isRunning = false
+        statusText = "未开始"
+        overlayModel.banner = OverlayBanner(
+            kind: .info,
+            title: "按 \(hotKeyLabel) 开始聆听",
+            detail: "菜单栏图标里也能开始或暂停。字幕只在你需要时才会采集。"
+        )
+        onStateChanged?()
+    }
+
     /// Toggle between running and paused.
     func toggle() async {
         if isRunning { stop() } else { await start() }
     }
 
-    /// Retry the capture after a failure, unless the user paused meanwhile.
-    private func scheduleRetry() {
-        guard !isRunning else { return }
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 15_000_000_000)
-            guard let self, !self.isRunning, !self.userPaused else { return }
-            self.log("重试采集…")
-            await self.start()
-        }
-    }
 
-    /// Set when the user explicitly pauses, so a failed capture does not
-    /// restart behind their back.
-    private var userPaused = false
 
     /// Switch the audio source, restarting capture.
     func switchSource(_ source: AudioSource) async {
@@ -459,10 +502,15 @@ final class AppController {
     // MARK: - Model engines
 
     /// The cloud endpoint as configured, with the given model name filled in.
+    ///
+    /// The key is only read out of the Keychain when a cloud engine is
+    /// actually in use: reading it makes macOS ask the user for permission, and
+    /// with both engines on "local" there is nothing to ask about.
     func cloudConfig(model: String) -> CloudLLMConfig {
-        CloudLLMConfig(
+        let usesCloud = settings.translationEngine == .cloud || settings.summaryEngine == .cloud
+        return CloudLLMConfig(
             baseURL: settings.cloudBaseURL,
-            apiKey: CloudCredentialStore.apiKey(),
+            apiKey: usesCloud ? CloudCredentialStore.apiKey() : "",
             model: model
         )
     }

@@ -34,6 +34,8 @@ Unlike the original, EchoCap downloads no models. It uses the Speech and Transla
 - Always-on-top overlay that stays above every window
 - **Never swallows clicks**, so you can keep working in the app underneath
 - Hold `⇧` to drag the overlay; the position is remembered
+- **Nothing starts by itself**: press `⌥⌘S` (or "Start listening" in the menu bar) to begin, and again to pause
+- The shortcut is yours to change: Settings → Behaviour → Shortcut, click the field and press the combination you want (must include ⌘, ⌥ or ⌃)
 - `⌥⌘L` (or the menu item) turns on layout editing: the window takes clicks, so you can **drag it anywhere** and drag any edge or corner to **resize** it (minimum 360×96). A dashed outline marks the mode; turn it off and the window is click-through again
 - **Separate line budgets** for the original and the translation — two each by default. The oldest words scroll off instead of the whole box clearing
 - Fades about 4 seconds after the last *new* text (not after the audio goes quiet)

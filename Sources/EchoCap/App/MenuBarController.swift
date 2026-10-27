@@ -24,7 +24,23 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         item.button?.image?.isTemplate = true
         item.button?.toolTip = "EchoCap 实时字幕"
         statusItem = item
+        controller.onStateChanged = { [weak self] in
+            self?.rebuildMenu()
+            self?.refreshStatusItem()
+        }
         rebuildMenu()
+        refreshStatusItem()
+    }
+
+    /// Dim the menu-bar icon while nothing is being captured, so the state is
+    /// visible without opening the menu.
+    private func refreshStatusItem() {
+        let running = controller.isRunning
+        statusItem?.button?.appearsDisabled = !running
+        let shortcut = controller.hotKeyLabel
+        statusItem?.button?.toolTip = running
+            ? "EchoCap 正在聆听（\(shortcut) 暂停）"
+            : "EchoCap 已暂停（\(shortcut) 开始）"
     }
 
     /// A simple waveform glyph, drawn so we do not need a bundled asset.
@@ -55,13 +71,17 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
 
-        // Pause / Resume
+        // Start / stop. The shortcut is shown in the title rather than set as a
+        // key equivalent: a global hot key already owns that combination, and
+        // having both would toggle twice whenever the menu is showing.
+        let shortcut = controller.hotKeyLabel
         let pause = NSMenuItem(
-            title: controller.isRunning ? "暂停字幕" : "开始字幕",
+            title: controller.isRunning
+                ? "暂停聆听（\(shortcut)）"
+                : "开始聆听（\(shortcut)）",
             action: #selector(toggleCapture),
-            keyEquivalent: "s"
+            keyEquivalent: ""
         )
-        pause.keyEquivalentModifierMask = [.command, .option]
         pause.target = self
         menu.addItem(pause)
 
@@ -250,7 +270,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     // MARK: - Actions
 
     @objc private func toggleCapture() {
-        Task { await controller.toggle() }
+        Task {
+            await controller.toggle()
+            rebuildMenu()
+            refreshStatusItem()
+        }
     }
 
     @objc private func selectSource(_ sender: NSMenuItem) {

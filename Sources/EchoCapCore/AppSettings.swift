@@ -218,6 +218,27 @@ public final class AppSettings: ObservableObject, @unchecked Sendable {
         set { store(newValue, Keys.overlayOrigin) }
     }
 
+    // MARK: - Shortcut
+
+    /// Start/stop shortcut, stored as a virtual key code + Carbon modifiers.
+    public var keyboardShortcut: HotKeyShortcut {
+        get {
+            let code = defaults.object(forKey: Keys.shortcutKeyCode) as? Int
+            let mods = defaults.object(forKey: Keys.shortcutModifiers) as? Int
+            guard let code, let mods else { return .default }
+            let shortcut = HotKeyShortcut(
+                keyCode: UInt32(code),
+                carbonModifiers: UInt32(mods)
+            )
+            return shortcut.isValid ? shortcut : .default
+        }
+        set {
+            defaults.set(Int(newValue.keyCode), forKey: Keys.shortcutKeyCode)
+            defaults.set(Int(newValue.carbonModifiers), forKey: Keys.shortcutModifiers)
+            objectWillChange.send()
+        }
+    }
+
     // MARK: - Model engines
 
     /// Whether translation and summarising run on this Mac or in the cloud.
@@ -282,6 +303,8 @@ public final class AppSettings: ObservableObject, @unchecked Sendable {
         static let overlaySize = "overlaySize"
         static let translationEngine = "translationEngine"
         static let summaryEngine = "summaryEngine"
+        static let shortcutKeyCode = "shortcutKeyCode"
+        static let shortcutModifiers = "shortcutModifiers"
         static let cloudBaseURL = "cloudBaseURL"
         static let cloudTranslationModel = "cloudTranslationModel"
         static let cloudSummaryModel = "cloudSummaryModel"

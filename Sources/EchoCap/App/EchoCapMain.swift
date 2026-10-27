@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import EchoCapCore
 
 /// Entry point. Wires the app delegate, menu bar, and global shortcuts.
@@ -100,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Keeps the signal sources alive for the lifetime of the app.
     private var signalSources: [DispatchSourceSignal] = []
 
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let controller = AppController()
         self.controller = controller
@@ -114,7 +116,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installGlobalMonitors()
         installSignalHandlers()
 
-        Task { await controller.start() }
+        // Nothing starts by itself: the user decides when to listen.
+        controller.enterIdleState()
     }
 
     /// Offer to save the recording before the app goes away.
