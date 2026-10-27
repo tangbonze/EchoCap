@@ -95,14 +95,6 @@ final class CaptionOverlayWindow: NSPanel {
         }
     }
 
-    /// Restore the default size, keeping the top edge where it is.
-    func resetSize() {
-        var newFrame = frame
-        newFrame.size = Self.defaultSize
-        newFrame.origin.y = frame.maxY - Self.defaultSize.height
-        setFrame(newFrame, display: true)
-        onGeometryChanged?()
-    }
 
     // MARK: - Geometry
 

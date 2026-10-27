@@ -49,17 +49,6 @@ struct CaptionOverlayView: View {
             // compositor nothing to draw, and the masked caption stack then
             // renders as nothing at all.
             .background(Color.black.opacity(0.004))
-            .overlay {
-                if model.isEditingLayout {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(
-                            Color.accentColor.opacity(0.75),
-                            style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
-                        )
-                        .padding(2)
-                        .allowsHitTesting(false)
-                }
-            }
             // Hit testing stays off even while editing: the window needs the
             // clicks itself so its background can drag and its edges resize.
             .allowsHitTesting(false)

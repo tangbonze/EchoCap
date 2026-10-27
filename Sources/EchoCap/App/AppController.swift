@@ -255,11 +255,6 @@ final class AppController {
         log(editing ? "进入布局调整（可拖动、可拉伸）" : "退出布局调整")
     }
 
-    /// Put the overlay back where it started, at its default size.
-    func resetOverlayGeometry() {
-        overlay.restoreSize(CaptionOverlayWindow.defaultSize)
-        overlay.resetPosition()
-    }
 
     private func startDisplayTimer() {
         displayTimer?.invalidate()

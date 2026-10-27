@@ -116,6 +116,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installGlobalMonitors()
         installSignalHandlers()
 
+        // Render the summary-choice accessory offscreen, for checking it
+        // without touching the desktop.
+        if CommandLine.arguments.contains("--render-summary-choice"),
+           let index = CommandLine.arguments.firstIndex(of: "--render-summary-choice"),
+           index + 1 < CommandLine.arguments.count {
+            let output = URL(fileURLWithPath: CommandLine.arguments[index + 1])
+            MainActor.assumeIsolated {
+                let view = SummaryChoiceView(
+                    preferred: AppSettings.shared.summaryEngine,
+                    localAvailability: SummaryService.availability(
+                        engine: .local,
+                        cloud: CloudLLMConfig(baseURL: "", apiKey: "", model: "")
+                    ),
+                    cloudAvailability: SummaryService.availability(
+                        engine: .cloud,
+                        cloud: CloudLLMConfig(baseURL: "x", apiKey: "y", model: "z")
+                    )
+                )
+                view.frame = NSRect(x: 0, y: 0, width: 420, height: 60)
+                guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+                view.cacheDisplay(in: view.bounds, to: rep)
+                if let data = rep.representation(using: .png, properties: [:]) {
+                    try? data.write(to: output)
+                    print("已渲染: \(output.path)")
+                }
+            }
+            return
+        }
+
         // Show the transcript save panel straight away, for checking it.
         if CommandLine.arguments.contains("--test-save-panel") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
