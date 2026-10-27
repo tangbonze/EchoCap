@@ -18,12 +18,22 @@ enum SessionSavePrompt {
         startedAt: Date,
         summaryEngine: ModelEngine,
         cloud: CloudLLMConfig,
+        onHideHistory: (() -> Void)? = nil,
         onFinish: (() -> Void)? = nil
     ) {
+        try? "entered".write(toFile: "/tmp/prompt_reached.txt", atomically: true, encoding: .utf8)
+        try? "present-entered".write(toFile: "/tmp/prompt_reached.txt", atomically: true, encoding: .utf8)
         guard !boxes.isEmpty else {
             onFinish?()
             return
         }
+
+        // Drop the history stack before the dialog appears: it is about
+        // saving, not browsing, and a stacked history behind the dialog looks
+        // like the caption split in two.
+        FileHandle.standardError.write(Data("[prompt] before hide-history callback\n".utf8))
+        onHideHistory?()
+        FileHandle.standardError.write(Data("[prompt] after hide-history callback\n".utf8))
 
         let minutes = max(1, Int(Date().timeIntervalSince(startedAt) / 60))
 

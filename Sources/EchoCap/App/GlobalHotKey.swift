@@ -32,6 +32,8 @@ final class GlobalHotKey: @unchecked Sendable {
         InstallEventHandler(
             GetApplicationEventTarget(),
             { _, _, userData -> OSStatus in
+                // 直接写 stderr，不经过任何 actor / 闭包，确认事件是否到达。
+                FileHandle.standardError.write(Data("[hotkey] C handler fired\n".utf8))
                 guard let userData else { return OSStatus(eventNotHandledErr) }
                 let hotKey = Unmanaged<GlobalHotKey>.fromOpaque(userData).takeUnretainedValue()
                 hotKey.onPress()

@@ -208,17 +208,32 @@ final class AppController {
 
         // Test hook: show the end-of-recording prompt immediately.
         if CommandLine.arguments.contains("--test-prompt") {
+            log("--test-prompt 开始")
             let now = Date()
             let box = CaptionBox(
                 committedText: "This is a test caption used to exercise the save prompt.",
                 translation: "这是一条用于测试保存提示的字幕。",
                 sourceAppName: "Test"
             )
+            // Pretend the user had been peeking at the history stack, so the
+            // prompt's own "hide history" behaviour is what gets tested.
+            // Two boxes: one history, one live — the "two parts" the user saw.
+            let historyBox = CaptionBox(
+                committedText: "I' Okay, so Google is dropping a brand new category of operating system.",
+                translation: "",
+                sourceAppName: "Test",
+                createdAt: now.addingTimeInterval(-40),
+                lastTextAt: now.addingTimeInterval(-30)
+            )
+            overlayModel.historyBoxes = [historyBox]
+            overlayModel.liveBox = box
+            overlayModel.isShowingHistory = true
+            setHistoryVisible(false)
             SessionSavePrompt.present(
                 boxes: [box],
                 startedAt: now.addingTimeInterval(-125),
                 summaryEngine: settings.summaryEngine,
-                cloud: cloudConfig(model: settings.cloudSummaryModel)
+                cloud: cloudConfig(model: settings.cloudSummaryModel),
             )
             return
         }
@@ -808,6 +823,7 @@ final class AppController {
     /// Toggle the history stack (bound to holding `⌥`).
     func setHistoryVisible(_ visible: Bool) {
         guard overlayModel.isShowingHistory != visible else { return }
+        log("历史显示 → \(visible)")
         overlayModel.isShowingHistory = visible
         if visible {
             // Show the boxes the user has not seen yet.
@@ -900,12 +916,20 @@ final class AppController {
             onFinish?()
             return
         }
+        // The prompt is about saving, not browsing: drop the history stack so
+        // it does not sit behind the dialog looking like a second caption.
+        setHistoryVisible(false)
         hasPromptedSession = true
+        // Drop the history stack before the dialog appears: it is about
+        // saving, not browsing, and a stacked history behind the dialog looks
+        // like the caption split in two.
+        setHistoryVisible(false)
         SessionSavePrompt.present(
             boxes: boxes,
             startedAt: sessionStartedAt,
             summaryEngine: settings.summaryEngine,
             cloud: cloudConfig(model: settings.cloudSummaryModel),
+            onHideHistory: { [weak self] in self?.setHistoryVisible(false) },
             onFinish: onFinish
         )
     }

@@ -239,12 +239,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func handleFlagsChanged(_ event: NSEvent) {
         let flags = event.modifierFlags
         let option = flags.contains(.option)
+        let command = flags.contains(.command)
         let shift = flags.contains(.shift)
 
         // Global monitors fire on their own thread; the UI lives on the main actor.
         Task { @MainActor [weak self] in
             guard let controller = self?.controller else { return }
-            controller.setHistoryVisible(option)
+            controller.setHistoryVisible(HistoryPeek.shouldShow(option: option, command: command))
 
             // Holding ⇧ turns the overlay into something you can drag.
             if shift {
@@ -254,6 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
+
 
     private func handleKeyDown(_ event: NSEvent) {
         let characters = event.charactersIgnoringModifiers?.lowercased()
