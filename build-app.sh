@@ -109,3 +109,21 @@ codesign --verify --verbose=2 "$APP" 2>&1 | sed 's/^/    /' || true
 
 echo "==> 完成: ${APP}"
 echo "    运行: open '${APP}'"
+
+# Optional: install into /Applications when asked (`./build-app.sh --install`).
+#
+# `ditto` overwrites in place, which keeps a *single* LaunchServices record.
+# Deleting and re-copying the bundle instead leaves the old copy in the Trash
+# and piles up registrations until Launchpad and `open -a` start pointing at
+# the trashed version.
+if [[ "${1:-}" == "--install" ]]; then
+    DEST="/Applications/${APP_NAME}.app"
+    echo "==> 安装到 ${DEST}"
+    pkill -f "${APP_NAME}.app/Contents/MacOS" 2>/dev/null || true
+    sleep 1
+    mkdir -p "$DEST"
+    ditto "$APP" "$DEST"
+    # Make this copy the authoritative one for Launchpad and Spotlight.
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST" 2>/dev/null || true
+    echo "==> 已安装"
+fi

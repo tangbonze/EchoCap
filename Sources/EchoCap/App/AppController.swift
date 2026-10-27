@@ -61,6 +61,10 @@ final class AppController {
     /// Watches for a capture that runs but never delivers sound.
     private var silenceWatchdog: Task<Void, Never>?
 
+    /// True while the saved geometry is being applied at launch, so the
+    /// half-applied frame is not written back over the saved values.
+    private var isRestoringGeometry = false
+
     /// When the current recording session began.
     private var sessionStartedAt = Date()
 
@@ -115,7 +119,7 @@ final class AppController {
         overlay = CaptionOverlayWindow(model: overlayModel)
 
         overlay.onGeometryChanged = { [weak self] in
-            guard let self else { return }
+            guard let self, !self.isRestoringGeometry else { return }
             let frame = self.overlay.frame
             self.settings.overlayOrigin = "\(frame.origin.x),\(frame.origin.y)"
             self.settings.overlaySize = "\(frame.width),\(frame.height)"
@@ -130,6 +134,12 @@ final class AppController {
     /// Prepare the UI. Called once at launch.
     func bootstrap() {
         overlay.orderFrontRegardless()
+
+        // Read both saved values before touching the frame: applying the size
+        // fires the geometry callback, which would otherwise overwrite the
+        // saved origin with the placeholder (0,0) before it is read.
+        isRestoringGeometry = true
+        defer { isRestoringGeometry = false }
 
         // A size the user chose last time, if it still fits the screen.
         if let saved = settings.overlaySize {
