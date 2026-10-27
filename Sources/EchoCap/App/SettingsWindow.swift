@@ -652,6 +652,7 @@ struct SettingsView: View {
         ScrollView {
             VStack(spacing: 20) {
                 header
+                featureCard
                 privacyCard
                 shortcutsCard
                 footer
@@ -700,6 +701,40 @@ struct SettingsView: View {
         .padding(.top, 4)
     }
 
+    // MARK: - Feature card
+
+    private var featureCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            cardHeader("它能做什么", icon: "sparkles")
+
+            VStack(alignment: .leading, spacing: 12) {
+                promiseRow(
+                    "waveform",
+                    "实时字幕",
+                    "Mac 播放的任何声音——视频、会议、播客——实时转成文字，延迟通常不到一秒。"
+                )
+                promiseRow(
+                    "globe",
+                    "实时翻译",
+                    "把听到的内容翻成中文等语言，原文译文同屏显示；本机与云端两种引擎任选。"
+                )
+                promiseRow(
+                    "text.badge.star",
+                    "AI 摘要",
+                    "录制结束后一键生成要点，用本机模型或你配置的云端 API。"
+                )
+                promiseRow(
+                    "clock.arrow.circlepath",
+                    "历史回溯与导出",
+                    "按住 ⌥ 回看之前的字幕并支持全文搜索；结束时保存为 Markdown 或纯文本。"
+                )
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+        }
+        .background(cardBackground)
+    }
+
     // MARK: - Privacy card
 
     private var privacyCard: some View {
@@ -709,8 +744,8 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 promiseRow(
                     "lock.shield",
-                    "音频不出这台 Mac",
-                    "语音识别与翻译都由系统在本机完成，没有一个字节离开设备。"
+                    "本机模式下，音频不出这台 Mac",
+                    "语音识别与翻译都由系统在本机完成，没有一个字节离开设备。只有手动选了云端引擎，才会把识别出的文字（不是音频）发给你自己配置的服务。"
                 )
                 promiseRow(
                     "person.crop.circle.badge.xmark",
@@ -718,9 +753,9 @@ struct SettingsView: View {
                     "不注册、不登录、不上报任何使用数据。"
                 )
                 promiseRow(
-                    "arrow.down.circle",
-                    "不用下载模型",
-                    "直接用 macOS 自带的语音与翻译框架，装好即用。"
+                    "internaldrive",
+                    "模型自动就位",
+                    "首次使用会自动下载系统语音识别模型，之后完全离线可用。"
                 )
             }
             .padding(.horizontal, 16)
