@@ -27,6 +27,18 @@ struct EchoCapMain {
             return
         }
 
+        if arguments.contains("--render-settings"), let index = arguments.firstIndex(of: "--render-settings") {
+            let output = index + 1 < arguments.count
+                ? URL(fileURLWithPath: arguments[index + 1])
+                : URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+                    .appendingPathComponent("echocap-settings.png")
+            MainActor.assumeIsolated {
+                UIPreviewRenderer.renderSettings(to: output)
+                print("已渲染设置预览: \(output.path)")
+            }
+            return
+        }
+
         if arguments.contains("--render-about"), let index = arguments.firstIndex(of: "--render-about") {
             let output = index + 1 < arguments.count
                 ? URL(fileURLWithPath: arguments[index + 1])

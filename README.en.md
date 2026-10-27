@@ -34,7 +34,7 @@ Unlike the original, EchoCap downloads no models. It uses the Speech and Transla
 - Always-on-top overlay that stays above every window
 - **Never swallows clicks**, so you can keep working in the app underneath
 - Hold `⇧` to drag the overlay; the position is remembered
-- Broadcast-style paging: fills N lines, then clears and starts over
+- **Separate line budgets** for the original and the translation — two each by default. The oldest words scroll off instead of the whole box clearing
 - Fades about 4 seconds after the last *new* text (not after the audio goes quiet)
 
 **Rewind and search**
@@ -45,12 +45,14 @@ Unlike the original, EchoCap downloads no models. It uses the Speech and Transla
 **Translation**
 - Translate into another language and show both at once
 - The translation follows the text on screen in near real time (throttled to about 0.3 s, one request at a time) and is re-checked once the sentence settles, so it never trails the original by seconds
+- Chinese output is folded to Simplified: Apple ships one Chinese model for both scripts and switches between them mid-session, so every result is normalised
 - Runs on-device; the translation never leaves the machine
+- Chinese output is folded to Simplified: Apple ships one Chinese model for both scripts and switches between them mid-session, so every result is normalised
 
 **Also**
 - Menu-bar only, no Dock icon
 - Transcripts export as plain text, Markdown, or SRT
-- Settings panel for size, lines per box, box opacity, stack spacing, and more — all live
+- Settings panel for size, original lines, translation lines, box opacity, stack spacing, and more — all live
 
 ### A failed capture never freezes the app — and it tells you why
 

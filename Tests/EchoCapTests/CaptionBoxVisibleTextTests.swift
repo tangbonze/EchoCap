@@ -57,4 +57,15 @@ struct CaptionBoxVisibleTextTests {
         // 只保留定稿译文：两者不会拼在一起。
         #expect(box.displayTranslation == "实时字幕可以工作。")
     }
+
+    @Test("原文与译文默认各两行")
+    func lineBudgetsDefaultToTwo() {
+        let name = "test.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        let settings = AppSettings(defaults: defaults)
+
+        #expect(settings.linesPerBox == 2)
+        #expect(settings.translationLines == 2)
+    }
 }

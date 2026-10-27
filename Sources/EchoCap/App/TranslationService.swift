@@ -1,5 +1,6 @@
 import Foundation
 import Translation
+import EchoCapCore
 
 /// Wraps Apple's on-device Translation framework.
 ///
@@ -37,6 +38,14 @@ actor TranslationService {
     /// The language pair currently loaded.
     private(set) var currentPair: (source: Locale.Language, target: Locale.Language)?
 
+    /// Whether results need folding to Simplified Chinese.
+    ///
+    /// Apple's Chinese model is one model for both scripts and does not honour
+    /// the requested variant reliably — the same session will hand back
+    /// Simplified for one sentence and Traditional for the next. Folding every
+    /// result keeps the captions in one script.
+    private var foldToSimplifiedChinese = false
+
     /// Check whether a translation pair can be used at all.
     func isAvailable(from source: Locale.Language, to target: Locale.Language) async -> Bool {
         let status = await availability.status(from: source, to: target)
@@ -62,6 +71,7 @@ actor TranslationService {
             session = newSession
             sessionKey = key
             currentPair = (source, target)
+            foldToSimplifiedChinese = Self.isSimplifiedChinese(target)
             return true
         } catch {
             session = nil
@@ -75,7 +85,7 @@ actor TranslationService {
         guard let session, !text.isEmpty else { return nil }
         do {
             let response = try await session.translate(text)
-            return response.targetText
+            return normalise(response.targetText)
         } catch {
             return nil
         }
@@ -87,10 +97,27 @@ actor TranslationService {
         do {
             let requests = batch.map { TranslationSession.Request(sourceText: $0) }
             let responses = try await session.translations(from: requests)
-            return responses.map(\.targetText)
+            return responses.map { normalise($0.targetText) }
         } catch {
             return []
         }
+    }
+
+    /// Put a result into the requested script, when the target is Chinese.
+    private func normalise(_ text: String) -> String {
+        guard foldToSimplifiedChinese else { return text }
+        return ChineseScript.toSimplified(text)
+    }
+
+    /// Whether `language` asks for Simplified Chinese.
+    private static func isSimplifiedChinese(_ language: Locale.Language) -> Bool {
+        // An explicit script wins; a bare "zh" is treated as Simplified, which
+        // matches what the system does by default.
+        let script = language.script?.identifier
+        guard language.languageCode?.identifier == "zh" || script == "Hans" || script == "Hant" else {
+            return false
+        }
+        return script != "Hant"
     }
 
     /// Release the current session.

@@ -133,8 +133,14 @@ public final class AppSettings: @unchecked Sendable {
 
     /// How many lines fill one caption box before it is cleared.
     public var linesPerBox: Int {
-        get { defaults.object(forKey: Keys.linesPerBox) as? Int ?? 4 }
+        get { defaults.object(forKey: Keys.linesPerBox) as? Int ?? 2 }
         set { defaults.set(newValue, forKey: Keys.linesPerBox) }
+    }
+
+    /// How many lines of translation to show under the original, 1….
+    public var translationLines: Int {
+        get { defaults.object(forKey: Keys.translationLines) as? Int ?? 2 }
+        set { defaults.set(newValue, forKey: Keys.translationLines) }
     }
 
     /// Opacity of the caption box background, 0…1.
@@ -212,6 +218,7 @@ public final class AppSettings: @unchecked Sendable {
         static let alignment = "alignment"
         static let timing = "captionTiming"
         static let linesPerBox = "linesPerBox"
+        static let translationLines = "translationLines"
         static let boxOpacity = "boxOpacity"
         static let showSourceApp = "showSourceAppName"
         static let historyDepth = "historyDepth"

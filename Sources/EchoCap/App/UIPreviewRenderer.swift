@@ -17,6 +17,15 @@ enum UIPreviewRenderer {
         render(view, to: url, size: size)
     }
 
+    /// Render the settings window's first tab, for checking the controls
+    /// without opening a window.
+    static func renderSettings(to url: URL, size: CGSize = CGSize(width: 640, height: 580)) {
+        let settings = AppSettings.shared
+        let model = SettingsViewModel(settings: settings, onChange: {}, initialTab: .appearance)
+        let view = SettingsView(model: model, settings: settings)
+        render(view, to: url, size: size)
+    }
+
     /// Render the caption overlay in one of its states.
     static func renderOverlay(
         to url: URL,

@@ -25,7 +25,8 @@ enum SettingsTab: String, Hashable, CaseIterable {
 final class SettingsViewModel: ObservableObject {
     @Published var fontSize: Double = 28
     @Published var boxOpacity: Double = 0.55
-    @Published var linesPerBox: Double = 3
+    @Published var linesPerBox: Double = 2
+    @Published var translationLines: Double = 2
     @Published var historySpacing: Double = 8
     @Published var historyDepth: Double = 20
     @Published var fadeDelay: Double = 4
@@ -44,6 +45,7 @@ final class SettingsViewModel: ObservableObject {
         fontSize = settings.fontSize
         boxOpacity = settings.boxOpacity
         linesPerBox = Double(settings.linesPerBox)
+        translationLines = Double(settings.translationLines)
         historySpacing = settings.historySpacing
         historyDepth = Double(min(settings.historyDepth, 100))
         fadeDelay = settings.fadeDelay
@@ -54,6 +56,7 @@ final class SettingsViewModel: ObservableObject {
         settings.fontSize = fontSize
         settings.boxOpacity = boxOpacity
         settings.linesPerBox = Int(linesPerBox)
+        settings.translationLines = Int(translationLines)
         settings.historySpacing = historySpacing
         settings.historyDepth = Int(historyDepth)
         settings.fadeDelay = fadeDelay
@@ -145,13 +148,25 @@ struct SettingsView: View {
                     }
                 }
 
-                LabeledContent("每屏行数") {
+                LabeledContent("原文行数") {
                     HStack {
                         Slider(value: $model.linesPerBox, in: 1...6, step: 1) { editing in
                             if !editing { model.commitAppearance() }
                         }
                         .frame(width: 180)
                         Text("\(Int(model.linesPerBox))")
+                            .monospacedDigit()
+                            .frame(width: 56, alignment: .leading)
+                    }
+                }
+
+                LabeledContent("译文行数") {
+                    HStack {
+                        Slider(value: $model.translationLines, in: 1...4, step: 1) { editing in
+                            if !editing { model.commitAppearance() }
+                        }
+                        .frame(width: 180)
+                        Text("\(Int(model.translationLines))")
                             .monospacedDigit()
                             .frame(width: 56, alignment: .leading)
                     }

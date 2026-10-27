@@ -125,13 +125,13 @@ struct CaptionBoxView: View {
             .fixedSize(horizontal: false, vertical: true)
 
             if settings.showBothLanguages, !box.displayTranslation.isEmpty {
-                // One line only: the translation is a reading aid, not a
-                // second caption block competing for screen space.
+                // The translation is a reading aid: it gets its own line budget
+                // (two lines by default) so it never crowds the original.
                 Text(box.displayTranslation)
                     .font(.system(size: settings.fontSize * 0.86, weight: .medium))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(settings.alignment == .center ? .center : .leading)
-                    .lineLimit(1)
+                    .lineLimit(max(1, settings.translationLines))
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: settings.alignment == .center ? .center : .leading)
             }
