@@ -125,16 +125,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         translateTo.submenu = translateMenu
         menu.addItem(translateTo)
 
-        // Show both languages
-        let both = NSMenuItem(
-            title: "同时显示两种语言",
-            action: #selector(toggleShowBoth),
-            keyEquivalent: ""
-        )
-        both.target = self
-        both.state = controller.settings.showBothLanguages ? .on : .off
-        menu.addItem(both)
-
         // Language / Models
         let languageItem = NSMenuItem(title: "识别语言", action: nil, keyEquivalent: "")
         let languageMenu = NSMenu()
@@ -157,50 +147,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
         languageItem.submenu = languageMenu
         menu.addItem(languageItem)
-
-        // Text size
-        let textSize = NSMenuItem(title: "文字大小", action: nil, keyEquivalent: "")
-        let sizeMenu = NSMenu()
-        for size in [18.0, 22.0, 28.0, 34.0, 42.0] {
-            let item = NSMenuItem(
-                title: "\(Int(size))",
-                action: #selector(selectFontSize(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = size
-            item.state = abs(controller.settings.fontSize - size) < 0.5 ? .on : .off
-            sizeMenu.addItem(item)
-        }
-        textSize.submenu = sizeMenu
-        menu.addItem(textSize)
-
-        // Alignment
-        let alignment = NSMenuItem(title: "对齐", action: nil, keyEquivalent: "")
-        let alignmentMenu = NSMenu()
-        for option in CaptionAlignment.allCases {
-            let item = NSMenuItem(
-                title: option.displayName,
-                action: #selector(selectAlignment(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = option
-            item.state = controller.settings.alignment == option ? .on : .off
-            alignmentMenu.addItem(item)
-        }
-        alignment.submenu = alignmentMenu
-        menu.addItem(alignment)
-
-        // Show source app name
-        let sourceName = NSMenuItem(
-            title: "显示来源应用名称",
-            action: #selector(toggleSourceAppName),
-            keyEquivalent: ""
-        )
-        sourceName.target = self
-        sourceName.state = controller.settings.showSourceAppName ? .on : .off
-        menu.addItem(sourceName)
 
         // Save transcript
         let save = NSMenuItem(title: "存储文字记录…", action: #selector(saveTranscript), keyEquivalent: "s")
@@ -258,6 +204,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         rebuildMenu()
     }
 
+    /// Titles of the current menu, for the `--dump-menu` debug flag.
+    func menuTitlesForDebug() -> [String] {
+        rebuildMenu()
+        return (statusItem?.menu?.items ?? []).map {
+            $0.isSeparatorItem ? "—" : ($0.title.isEmpty ? "(无标题)" : $0.title)
+        }
+    }
+
     private func refreshRecognitionLanguages() {
         Task {
             let installed = await SpeechEngine.installedRecognitionLocales()
@@ -288,9 +242,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         Task { await controller.reconfigure() }
     }
 
-    @objc private func toggleShowBoth() {
-        controller.settings.showBothLanguages.toggle()
-    }
 
     @objc private func selectRecognitionLanguage(_ sender: NSMenuItem) {
         let language = sender.representedObject as? String
@@ -298,19 +249,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         Task { await controller.reconfigure() }
     }
 
-    @objc private func selectFontSize(_ sender: NSMenuItem) {
-        guard let size = sender.representedObject as? Double else { return }
-        controller.settings.fontSize = size
-    }
 
-    @objc private func selectAlignment(_ sender: NSMenuItem) {
-        guard let option = sender.representedObject as? CaptionAlignment else { return }
-        controller.settings.alignment = option
-    }
 
-    @objc private func toggleSourceAppName() {
-        controller.settings.showSourceAppName.toggle()
-    }
 
     @objc private func saveTranscript() {
         let panel = NSSavePanel()

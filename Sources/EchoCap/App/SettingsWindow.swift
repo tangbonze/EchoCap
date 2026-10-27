@@ -344,7 +344,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Picker("对齐", selection: Binding(
+                Picker("字母对齐方式", selection: Binding(
                     get: { settings.alignment },
                     set: { settings.alignment = $0 }
                 )) {

@@ -116,6 +116,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installGlobalMonitors()
         installSignalHandlers()
 
+        if CommandLine.arguments.contains("--dump-menu") {
+            let titles = menuBar.menuTitlesForDebug()
+            print("菜单项（\(titles.count)）：")
+            for title in titles { print("  • \(title)") }
+            NSApp.terminate(nil)
+            return
+        }
+
         // Nothing starts by itself: the user decides when to listen.
         controller.enterIdleState()
     }

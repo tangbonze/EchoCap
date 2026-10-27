@@ -415,11 +415,7 @@ final class AppController {
         silenceWatchdog?.cancel()
         silenceWatchdog = nil
         statusText = "已暂停"
-        overlayModel.banner = OverlayBanner(
-            kind: .info,
-            title: "已暂停",
-            detail: "按 \(hotKeyLabel) 继续聆听。"
-        )
+        overlayModel.banner = nil
         onStateChanged?()
         systemCapture.stop()
         microphoneCapture.stop()
@@ -466,11 +462,9 @@ final class AppController {
     func enterIdleState() {
         isRunning = false
         statusText = "未开始"
-        overlayModel.banner = OverlayBanner(
-            kind: .info,
-            title: "按 \(hotKeyLabel) 开始聆听",
-            detail: "菜单栏图标里也能开始或暂停。字幕只在你需要时才会采集。"
-        )
+        // No on-screen hint: a caption overlay that sits there saying "press
+        // the shortcut" is just clutter between sessions.
+        overlayModel.banner = nil
         onStateChanged?()
     }
 

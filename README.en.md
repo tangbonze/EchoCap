@@ -68,7 +68,8 @@ Unlike the original, EchoCap downloads no models. It uses the Speech and Transla
 **Also**
 - Menu-bar only, no Dock icon
 - Transcripts export as plain text, Markdown, or SRT
-- Settings panel for size, original lines, translation lines, box opacity, stack spacing, and more — all live
+- The menu keeps only what is handy while listening; everything else lives in Settings
+- Settings panel for size, original lines, translation lines, box opacity, letter alignment, caption timing, stack spacing, and more — all live
 
 ### A failed capture never freezes the app — and it tells you why
 
