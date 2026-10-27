@@ -116,6 +116,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installGlobalMonitors()
         installSignalHandlers()
 
+        // Show the transcript save panel straight away, for checking it.
+        if CommandLine.arguments.contains("--test-save-panel") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                let url = TranscriptSavePanel.present(baseName: "字幕记录 2026-10-27 13-00")
+                print(url?.path ?? "已取消")
+                NSApp.terminate(nil)
+            }
+            return
+        }
+
         if CommandLine.arguments.contains("--dump-menu") {
             let titles = menuBar.menuTitlesForDebug()
             print("菜单项（\(titles.count)）：")

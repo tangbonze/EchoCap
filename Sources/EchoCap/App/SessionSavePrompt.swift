@@ -85,18 +85,13 @@ enum SessionSavePrompt {
 
     /// Where to write the transcript. `nil` when the user cancels.
     private static func askForDestination() -> URL? {
-        let panel = NSSavePanel()
-        panel.title = "保存字幕记录"
-        panel.nameFieldStringValue = defaultFileName()
-        panel.allowedContentTypes = []
-        panel.canCreateDirectories = true
-        return panel.runModal() == .OK ? panel.url : nil
+        TranscriptSavePanel.present(baseName: defaultBaseName())
     }
 
-    private static func defaultFileName() -> String {
+    private static func defaultBaseName() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH-mm"
-        return "字幕记录 \(formatter.string(from: Date())).md"
+        return "字幕记录 \(formatter.string(from: Date()))"
     }
 
     // MARK: - Summary

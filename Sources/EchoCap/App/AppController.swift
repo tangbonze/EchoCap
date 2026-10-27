@@ -82,6 +82,24 @@ final class AppController {
 
     /// Loudest sample seen since capture started.
     private var peakSinceStart: Int = 0
+
+    /// Samples still to be thrown away at the start of a capture.
+    ///
+    /// Opening a system-audio tap makes a click, and the recogniser turns that
+    /// click into stray quotes and letters — the junk that used to sit at the
+    /// top of the first caption of every session. The audio right after the tap
+    /// opens is discarded instead of fed.
+    private var samplesToDiscard = 0
+
+    /// Samples left in the fade-in that follows the discard window.
+    ///
+    /// Jumping straight from nothing to full-scale audio is itself a click, and
+    /// the recogniser hears that click. Ramping the first few milliseconds keeps
+    /// the onset smooth.
+    private var fadeInRemaining = 0
+    private var fadeInTotal = 0
+
+    private let discardLock = NSLock()
     /// When the sample count was last reported.
     private var lastSampleReport = Date()
 
@@ -311,15 +329,39 @@ final class AppController {
             switch source {
             case .systemAudio:
                 systemCapture.onSamples = { [weak self] samples in
+                    guard let self else { return }
+
+                    // Drop the click that opening the tap produces, then fade
+                    // in so the first real sample is not a click either.
+                    var output: [Int16] = []
+                    output.reserveCapacity(samples.count)
+                    self.discardLock.lock()
+                    for sample in samples {
+                        if self.samplesToDiscard > 0 {
+                            self.samplesToDiscard -= 1
+                            continue
+                        }
+                        if self.fadeInRemaining > 0 {
+                            let done = Double(self.fadeInTotal - self.fadeInRemaining + 1)
+                            let gain = done / Double(max(1, self.fadeInTotal))
+                            output.append(Int16(clamping: Int(Double(sample) * gain)))
+                            self.fadeInRemaining -= 1
+                        } else {
+                            output.append(sample)
+                        }
+                    }
+                    self.discardLock.unlock()
+                    guard !output.isEmpty else { return }
+
                     // Feed inline: the recogniser's input stream is
                     // thread-safe, and hopping through a task per chunk would
                     // let samples arrive out of order and garble the audio.
-                    self?.speech.feed(samples: samples)
+                    self.speech.feed(samples: output)
                     let count = samples.count
                     var peak = 0
                     for value in samples { peak = max(peak, abs(Int(value))) }
-                    if peak > self?.peakLevel ?? 0 { self?.peakLevel = peak }
-                    if peak > self?.peakSinceStart ?? 0 { self?.peakSinceStart = peak }
+                    if peak > self.peakLevel { self.peakLevel = peak }
+                    if peak > self.peakSinceStart { self.peakSinceStart = peak }
                     Task { @MainActor [weak self] in
                         self?.receivedSampleCount += count
                     }
@@ -365,6 +407,7 @@ final class AppController {
         peakSinceStart = 0
         sessionStartedAt = Date()
         hasPromptedSession = false
+        armStartupDiscard(sampleRate: speech.inputFormat?.sampleRate ?? 16_000)
         statusText = "正在聆听"
         lastError = nil
         startSilenceWatchdog(source: source)
@@ -427,6 +470,17 @@ final class AppController {
 
     /// The shortcut as the user should read it.
     var hotKeyLabel: String { settings.keyboardShortcut.displayString }
+
+    /// Throw away the first ~350 ms of a new capture.
+    ///
+    /// Kept out of the async `start()` so the lock stays in synchronous code.
+    private func armStartupDiscard(sampleRate: Double) {
+        discardLock.lock()
+        samplesToDiscard = Int(sampleRate * 0.35)
+        fadeInTotal = Int(sampleRate * 0.06)
+        fadeInRemaining = fadeInTotal
+        discardLock.unlock()
+    }
 
     /// Register the user's start/stop shortcut.
     ///
@@ -565,6 +619,12 @@ final class AppController {
         if diagnosticLog {
             log("RAW final=\(isFinal) range=\(String(format: "%.4f", rangeStart)) len=\(text.count) tail=\(text.suffix(28))")
         }
+        // Quote-and-letter soup from a click is not speech.
+        if CaptionTextSanitizer.isNoise(text) {
+            log("丢弃疑似噪声：\(text)")
+            return
+        }
+
         let update = assembler.ingest(text: text, isFinal: isFinal)
 
         // Work out the source language for translation using on-device

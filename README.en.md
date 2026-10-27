@@ -50,6 +50,7 @@ Unlike the original, EchoCap downloads no models. It uses the Speech and Transla
 
 **A recording asks to be kept**
 - Pausing (`⌥⌘S`) or quitting from the menu offers to save the session: how many captions, how long.
+- Saving offers **Markdown (.md)** or **plain text (.txt)**, picked in the save dialog
 - Tick "summarise with AI" and the summary goes to the top of the Markdown file and into its own window, ready to copy.
 - When the summary model is unavailable the checkbox says why (this Mac does not qualify for Apple Intelligence, for instance) — the cloud engine is the way around it.
 

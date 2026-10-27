@@ -253,16 +253,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
 
     @objc private func saveTranscript() {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "字幕记录.srt"
-        panel.allowedContentTypes = []
-        panel.begin { [weak self] response in
-            guard response == .OK, let url = panel.url else { return }
-            do {
-                try self?.controller.saveTranscript(to: url)
-            } catch {
-                NSAlert(error: error).runModal()
-            }
+        guard let url = TranscriptSavePanel.present(baseName: "字幕记录") else { return }
+        do {
+            try controller.saveTranscript(to: url)
+        } catch {
+            NSAlert(error: error).runModal()
         }
     }
 
