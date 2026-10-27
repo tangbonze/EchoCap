@@ -14,7 +14,7 @@ struct CaptionOverlayView: View {
                     Spacer(minLength: 0)
 
                     if model.isShowingHistory {
-                        ForEach(model.historyBoxes) { box in
+                        ForEach(model.historyBoxes.filter { !$0.displayText.isEmpty }) { box in
                             CaptionBoxView(
                                 box: box,
                                 settings: model.settings,
@@ -26,7 +26,7 @@ struct CaptionOverlayView: View {
                         }
                     }
 
-                    if let live = model.liveBox, !model.isFadingOut {
+                    if let live = model.liveBox, !live.displayText.isEmpty, !model.isFadingOut {
                         CaptionBoxView(
                             box: live,
                             settings: model.settings,

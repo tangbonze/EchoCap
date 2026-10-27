@@ -331,11 +331,10 @@ final class AppController {
                 }
                 // Creating the tap blocks while macOS shows the Screen & System
                 // Audio Recording prompt, and the user can take their time.
-                overlayModel.banner = OverlayBanner(
-                    kind: .info,
-                    title: "正在准备聆听……",
-                    detail: "如果 macOS 弹出录音授权，请点「允许」。"
-                )
+                //
+                // Nothing is put on screen while that happens: a box that
+                // appears and vanishes again is worse than a moment of silence,
+                // and a failed start shows its own error.
                 try await systemCapture.start(timeout: 90)
             case .microphone:
                 microphoneCapture.onSamples = { [weak self] samples in
