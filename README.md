@@ -43,7 +43,7 @@
 - **语音识别永远在本机**：用的是 macOS 自带的 Speech 框架，音频不出设备，这一项没有云端选项。
 - **翻译**、**摘要**各有「本机模型 / 云端 API」两档，可以分开选：
   - 本机：Apple Translation / Apple 智能（端侧大模型）
-  - 云端：任何 OpenAI 兼容接口（OpenAI、DeepSeek、Moonshot、本地 Ollama…），在设置里填接口地址、API Key、两个模型名
+  - 云端：任何 OpenAI 兼容接口（OpenAI、DeepSeek、Moonshot、本地 Ollama…）。填好接口地址和 API Key 后，app 会自动请求 `/models` 列出可用模型，**从下拉里选**（取不到列表时才退回手填），也有「获取模型列表」按钮可以随时刷新
 - API Key 存在**系统钥匙串**里，不写进偏好设置文件；设置面板里有「测试连接」。
 - 中文译文统一折成简体（Apple 的中文模型简繁共用一套，会在同一段里混出两种字形）。
 

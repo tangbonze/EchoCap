@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 /// Where the audio being captioned comes from.
 public enum AudioSource: String, Codable, CaseIterable, Sendable {
@@ -59,7 +60,20 @@ public enum SpeakMode: String, Codable, CaseIterable, Sendable {
 }
 
 /// Everything the user can tune. Persisted in `UserDefaults`.
-public final class AppSettings: @unchecked Sendable {
+public final class AppSettings: ObservableObject, @unchecked Sendable {
+    /// Fired after any setting changes.
+    ///
+    /// The settings panel binds straight to this object, so without a
+    /// notification SwiftUI keeps drawing the old value — the change takes
+    /// effect but the control does not move until the panel is reopened.
+    public let objectWillChange = ObservableObjectPublisher()
+
+    /// Write a value and tell the UI about it.
+    private func store<T>(_ value: T, _ key: String) {
+        defaults.set(value, forKey: key)
+        objectWillChange.send()
+    }
+
     public static let shared = AppSettings()
 
     private let defaults: UserDefaults
@@ -72,7 +86,7 @@ public final class AppSettings: @unchecked Sendable {
 
     public var source: AudioSource {
         get { AudioSource(rawValue: defaults.string(forKey: Keys.source) ?? "") ?? .systemAudio }
-        set { defaults.set(newValue.rawValue, forKey: Keys.source) }
+        set { store(newValue.rawValue, Keys.source) }
     }
 
     /// Bundle identifiers excluded from system-audio capture.
@@ -81,13 +95,13 @@ public final class AppSettings: @unchecked Sendable {
             let raw = defaults.stringArray(forKey: Keys.excluded) ?? []
             return Set(raw)
         }
-        set { defaults.set(Array(newValue).sorted(), forKey: Keys.excluded) }
+        set { store(Array(newValue).sorted(), Keys.excluded) }
     }
 
     /// Recogniser language; `nil` means auto-detect.
     public var recognitionLanguage: String? {
         get { defaults.string(forKey: Keys.recognitionLang) }
-        set { defaults.set(newValue, forKey: Keys.recognitionLang) }
+        set { store(newValue, Keys.recognitionLang) }
     }
 
     // MARK: - Translation
@@ -95,63 +109,63 @@ public final class AppSettings: @unchecked Sendable {
     /// Target language for translation; `nil` disables translation.
     public var translationTarget: String? {
         get { defaults.string(forKey: Keys.translationTarget) }
-        set { defaults.set(newValue, forKey: Keys.translationTarget) }
+        set { store(newValue, Keys.translationTarget) }
     }
 
     public var showBothLanguages: Bool {
         get { defaults.object(forKey: Keys.showBoth) as? Bool ?? true }
-        set { defaults.set(newValue, forKey: Keys.showBoth) }
+        set { store(newValue, Keys.showBoth) }
     }
 
     public var speakMode: SpeakMode {
         get { SpeakMode(rawValue: defaults.string(forKey: Keys.speak) ?? "") ?? .off }
-        set { defaults.set(newValue.rawValue, forKey: Keys.speak) }
+        set { store(newValue.rawValue, Keys.speak) }
     }
 
     /// Duck the original audio while the translation is being spoken.
     public var lowerOriginalWhileSpeaking: Bool {
         get { defaults.object(forKey: Keys.duck) as? Bool ?? true }
-        set { defaults.set(newValue, forKey: Keys.duck) }
+        set { store(newValue, Keys.duck) }
     }
 
     // MARK: - Appearance
 
     public var fontSize: Double {
         get { defaults.object(forKey: Keys.fontSize) as? Double ?? 28 }
-        set { defaults.set(newValue, forKey: Keys.fontSize) }
+        set { store(newValue, Keys.fontSize) }
     }
 
     public var alignment: CaptionAlignment {
         get { CaptionAlignment(rawValue: defaults.string(forKey: Keys.alignment) ?? "") ?? .start }
-        set { defaults.set(newValue.rawValue, forKey: Keys.alignment) }
+        set { store(newValue.rawValue, Keys.alignment) }
     }
 
     public var timing: CaptionTiming {
         get { CaptionTiming(rawValue: defaults.string(forKey: Keys.timing) ?? "") ?? .liveThenSettle }
-        set { defaults.set(newValue.rawValue, forKey: Keys.timing) }
+        set { store(newValue.rawValue, Keys.timing) }
     }
 
     /// How many lines fill one caption box before it is cleared.
     public var linesPerBox: Int {
         get { defaults.object(forKey: Keys.linesPerBox) as? Int ?? 2 }
-        set { defaults.set(newValue, forKey: Keys.linesPerBox) }
+        set { store(newValue, Keys.linesPerBox) }
     }
 
     /// How many lines of translation to show under the original, 1….
     public var translationLines: Int {
         get { defaults.object(forKey: Keys.translationLines) as? Int ?? 2 }
-        set { defaults.set(newValue, forKey: Keys.translationLines) }
+        set { store(newValue, Keys.translationLines) }
     }
 
     /// Opacity of the caption box background, 0…1.
     public var boxOpacity: Double {
         get { defaults.object(forKey: Keys.boxOpacity) as? Double ?? 0.55 }
-        set { defaults.set(newValue, forKey: Keys.boxOpacity) }
+        set { store(newValue, Keys.boxOpacity) }
     }
 
     public var showSourceAppName: Bool {
         get { defaults.object(forKey: Keys.showSourceApp) as? Bool ?? false }
-        set { defaults.set(newValue, forKey: Keys.showSourceApp) }
+        set { store(newValue, Keys.showSourceApp) }
     }
 
     // MARK: - History
@@ -162,19 +176,19 @@ public final class AppSettings: @unchecked Sendable {
             let raw = defaults.object(forKey: Keys.historyDepth) as? Int ?? 20
             return raw <= 0 ? Int.max : raw
         }
-        set { defaults.set(newValue, forKey: Keys.historyDepth) }
+        set { store(newValue, Keys.historyDepth) }
     }
 
     /// Vertical gap between stacked history boxes.
     public var historySpacing: Double {
         get { defaults.object(forKey: Keys.historySpacing) as? Double ?? 8 }
-        set { defaults.set(newValue, forKey: Keys.historySpacing) }
+        set { store(newValue, Keys.historySpacing) }
     }
 
     /// Seconds of silence before the history stack is forgotten. 0 disables.
     public var historyTimeout: Double {
         get { defaults.object(forKey: Keys.historyTimeout) as? Double ?? 30 }
-        set { defaults.set(newValue, forKey: Keys.historyTimeout) }
+        set { store(newValue, Keys.historyTimeout) }
     }
 
     // MARK: - Model behaviour
@@ -182,26 +196,26 @@ public final class AppSettings: @unchecked Sendable {
     /// Drop non-speech audio (music, noise) before it reaches the recogniser.
     public var skipNonSpeech: Bool {
         get { defaults.object(forKey: Keys.skipNonSpeech) as? Bool ?? true }
-        set { defaults.set(newValue, forKey: Keys.skipNonSpeech) }
+        set { store(newValue, Keys.skipNonSpeech) }
     }
 
     /// Start a new caption box when the speaker changes.
     public var newBoxOnSpeakerChange: Bool {
         get { defaults.object(forKey: Keys.newBoxOnSpeaker) as? Bool ?? false }
-        set { defaults.set(newValue, forKey: Keys.newBoxOnSpeaker) }
+        set { store(newValue, Keys.newBoxOnSpeaker) }
     }
 
     /// Seconds after the last new text before the live box fades out.
     public var fadeDelay: Double {
         get { defaults.object(forKey: Keys.fadeDelay) as? Double ?? 4 }
-        set { defaults.set(newValue, forKey: Keys.fadeDelay) }
+        set { store(newValue, Keys.fadeDelay) }
     }
 
     // MARK: - Overlay position
 
     public var overlayOrigin: String? {
         get { defaults.string(forKey: Keys.overlayOrigin) }
-        set { defaults.set(newValue, forKey: Keys.overlayOrigin) }
+        set { store(newValue, Keys.overlayOrigin) }
     }
 
     // MARK: - Model engines
@@ -209,36 +223,36 @@ public final class AppSettings: @unchecked Sendable {
     /// Whether translation and summarising run on this Mac or in the cloud.
     public var translationEngine: ModelEngine {
         get { ModelEngine(rawValue: defaults.string(forKey: Keys.translationEngine) ?? "") ?? .local }
-        set { defaults.set(newValue.rawValue, forKey: Keys.translationEngine) }
+        set { store(newValue.rawValue, Keys.translationEngine) }
     }
 
     public var summaryEngine: ModelEngine {
         get { ModelEngine(rawValue: defaults.string(forKey: Keys.summaryEngine) ?? "") ?? .local }
-        set { defaults.set(newValue.rawValue, forKey: Keys.summaryEngine) }
+        set { store(newValue.rawValue, Keys.summaryEngine) }
     }
 
     /// Base URL of an OpenAI-compatible endpoint, e.g. https://api.openai.com/v1
     public var cloudBaseURL: String {
         get { defaults.string(forKey: Keys.cloudBaseURL) ?? "" }
-        set { defaults.set(newValue, forKey: Keys.cloudBaseURL) }
+        set { store(newValue, Keys.cloudBaseURL) }
     }
 
     /// Model used for cloud translation, e.g. gpt-4o-mini.
     public var cloudTranslationModel: String {
         get { defaults.string(forKey: Keys.cloudTranslationModel) ?? "" }
-        set { defaults.set(newValue, forKey: Keys.cloudTranslationModel) }
+        set { store(newValue, Keys.cloudTranslationModel) }
     }
 
     /// Model used for cloud summarising.
     public var cloudSummaryModel: String {
         get { defaults.string(forKey: Keys.cloudSummaryModel) ?? "" }
-        set { defaults.set(newValue, forKey: Keys.cloudSummaryModel) }
+        set { store(newValue, Keys.cloudSummaryModel) }
     }
 
     /// Overlay size as "width,height". `nil` means the default size.
     public var overlaySize: String? {
         get { defaults.string(forKey: Keys.overlaySize) }
-        set { defaults.set(newValue, forKey: Keys.overlaySize) }
+        set { store(newValue, Keys.overlaySize) }
     }
 
     // MARK: - Keys

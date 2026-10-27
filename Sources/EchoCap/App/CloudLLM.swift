@@ -39,6 +39,42 @@ actor CloudLLMClient {
         session = URLSession(configuration: configuration)
     }
 
+    /// List the models the endpoint offers.
+    ///
+    /// Used to fill the model pickers, so nobody has to remember that a
+    /// provider spells its model `deepseek-chat` and not `deepseek`.
+    func models(config: CloudLLMConfig) async throws -> [String] {
+        guard !config.baseURL.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw CloudLLMError.notConfigured
+        }
+        guard let url = config.modelsEndpoint else {
+            throw CloudLLMError.badEndpoint(config.baseURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if !config.apiKey.trimmingCharacters(in: .whitespaces).isEmpty {
+            request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
+        }
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw CloudLLMError.transport(error.localizedDescription)
+        }
+
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw CloudLLMError.http(http.statusCode, text)
+        }
+
+        let names = CloudModelList.parse(data)
+        guard !names.isEmpty else { throw CloudLLMError.empty }
+        return names
+    }
+
     /// One system message plus one user message, returning the reply text.
     func complete(
         system: String,

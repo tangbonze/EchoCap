@@ -42,7 +42,7 @@ Unlike the original, EchoCap downloads no models. It uses the Speech and Transla
 - **Speech recognition is always local.** It uses the Speech framework built into macOS; the audio never leaves the machine. There is no cloud option for it.
 - **Translation** and **summarising** each have a "local / cloud API" switch, set independently:
   - local: Apple Translation and the on-device Apple Intelligence model
-  - cloud: any OpenAI-compatible endpoint (OpenAI, DeepSeek, Moonshot, a local Ollama…). Fill in the endpoint, an API key and the two model names in Settings.
+  - cloud: any OpenAI-compatible endpoint (OpenAI, DeepSeek, Moonshot, a local Ollama…). Once the endpoint and key are in, the app asks `/models` and lists what is available — pick from the dropdown. It only falls back to typing a name when the endpoint cannot list them; there is also a "Fetch model list" button.
 - The API key is stored in the **system Keychain**, not in the preferences file. Settings has a "Test connection" button.
 - Chinese output is folded to Simplified — Apple ships one Chinese model for both scripts and switches between them mid-session.
 

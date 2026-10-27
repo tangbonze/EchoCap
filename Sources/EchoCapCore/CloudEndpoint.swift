@@ -23,6 +23,22 @@ public struct CloudLLMConfig: Equatable, Sendable {
             && !model.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    /// The model-list URL for this endpoint.
+    ///
+    /// Derived from the same base, so a user who typed
+    /// `https://api.openai.com/v1` gets `…/v1/models` without extra work.
+    public var modelsEndpoint: URL? {
+        var text = baseURL.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return nil }
+        if text.hasSuffix("/") { text.removeLast() }
+        if text.hasSuffix("/chat/completions") {
+            text.removeLast("/chat/completions".count)
+        }
+        if text.hasSuffix("/") { text.removeLast() }
+        text += "/models"
+        return URL(string: text)
+    }
+
     /// The chat-completions URL, tolerating a base that already ends in `/v1`.
     public var endpoint: URL? {
         var text = baseURL.trimmingCharacters(in: .whitespaces)

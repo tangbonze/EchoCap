@@ -42,6 +42,10 @@ final class SettingsViewModel: ObservableObject {
     @Published var cloudAPIKey: String = ""
     @Published var cloudStatus: String = ""
 
+    /// Models the endpoint reported, for the pickers.
+    @Published var detectedModels: [String] = []
+    @Published var isDetectingModels = false
+
     /// Called when the translation engine changed, so the app can swap without
     /// restarting the whole recogniser.
     var onEngineChanged: (() -> Void)?
@@ -82,10 +86,71 @@ final class SettingsViewModel: ObservableObject {
         onEngineChanged?()
     }
 
+    /// Look the model list up after the endpoint or key changes.
+    ///
+    /// Debounced: typing an address fires this on every keystroke otherwise,
+    /// and each attempt is a network round trip.
+    func scheduleModelDetection() {
+        detectionTask?.cancel()
+        guard !cloudBaseURL.trimmingCharacters(in: .whitespaces).isEmpty else {
+            detectedModels = []
+            return
+        }
+        detectionTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled, let self else { return }
+            self.detectModels(announceFailure: false)
+        }
+    }
+
+    private var detectionTask: Task<Void, Never>?
+    private let cloudClient = CloudLLMClient(timeout: 15)
+
+    /// Ask the endpoint which models it offers, and fill the pickers.
+    func detectModels(announceFailure: Bool = true) {
+        commitCloud()
+        let config = CloudLLMConfig(
+            baseURL: settings.cloudBaseURL,
+            apiKey: CloudCredentialStore.apiKey(),
+            model: "-"
+        )
+        guard !config.baseURL.isEmpty else {
+            cloudStatus = "先填接口地址"
+            return
+        }
+
+        isDetectingModels = true
+        Task {
+            do {
+                let names = try await cloudClient.models(config: config)
+                detectedModels = names
+                cloudStatus = "发现 \(names.count) 个模型，从下拉里选"
+                // Give each slot a starting value so nothing is left blank.
+                if settings.cloudTranslationModel.isEmpty, let first = names.first {
+                    cloudTranslationModel = first
+                    settings.cloudTranslationModel = first
+                }
+                if settings.cloudSummaryModel.isEmpty, let first = names.first {
+                    cloudSummaryModel = first
+                    settings.cloudSummaryModel = first
+                }
+            } catch {
+                detectedModels = []
+                if announceFailure {
+                    cloudStatus = error.localizedDescription
+                } else {
+                    cloudStatus = "没能取到模型列表（\(error.localizedDescription)），可以直接手填"
+                }
+            }
+            isDetectingModels = false
+        }
+    }
+
     /// Try the endpoint with a trivial request.
     func testCloudConnection() {
         commitCloud()
         cloudStatus = "正在连接…"
+        detectModels(announceFailure: false)
         let config = CloudLLMConfig(
             baseURL: settings.cloudBaseURL,
             apiKey: CloudCredentialStore.apiKey(),
@@ -153,6 +218,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         model.onEngineChanged = { [weak self] in
             Task { await self?.controller?.translationSettingsChanged() }
         }
+        // Fill the model pickers straight away when an endpoint is configured.
+        model.scheduleModelDetection()
         let content = SettingsView(model: model, settings: settings)
 
         let hosting = NSHostingController(rootView: content)
@@ -172,7 +239,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 /// The settings panel.
 struct SettingsView: View {
     @ObservedObject var model: SettingsViewModel
-    let settings: AppSettings
+    /// Observed, not merely held: the panel binds straight to it, and without
+    /// this the controls keep showing the old value after a change.
+    @ObservedObject var settings: AppSettings
 
     /// Panel height. The preview renders taller so every section shows.
     var frameHeight: CGFloat = 700
@@ -384,15 +453,23 @@ struct SettingsView: View {
             Section("云端 API") {
                 TextField("接口地址", text: $model.cloudBaseURL, prompt: Text("https://api.openai.com/v1"))
                     .onSubmit { model.commitCloud() }
+                    .onChange(of: model.cloudBaseURL) { _, _ in model.scheduleModelDetection() }
+
                 SecureField("API Key", text: $model.cloudAPIKey)
                     .onSubmit { model.commitCloud() }
-                TextField("翻译模型", text: $model.cloudTranslationModel, prompt: Text("gpt-4o-mini"))
-                    .onSubmit { model.commitCloud() }
-                TextField("总结模型", text: $model.cloudSummaryModel, prompt: Text("gpt-4o"))
-                    .onSubmit { model.commitCloud() }
+                    .onChange(of: model.cloudAPIKey) { _, _ in model.scheduleModelDetection() }
+
+                modelPicker("翻译模型", selection: $model.cloudTranslationModel)
+                modelPicker("总结模型", selection: $model.cloudSummaryModel)
 
                 HStack(spacing: 12) {
                     Button("保存配置") { model.commitCloud() }
+                    Button {
+                        model.detectModels()
+                    } label: {
+                        Text(model.isDetectingModels ? "正在获取…" : "获取模型列表")
+                    }
+                    .disabled(model.isDetectingModels)
                     Button("测试连接") { model.testCloudConnection() }
                 }
 
@@ -577,6 +654,36 @@ struct SettingsView: View {
                 .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// A model slot: a dropdown when the endpoint told us what it offers, a
+    /// free-text field when it did not.
+    @ViewBuilder
+    private func modelPicker(_ title: String, selection: Binding<String>) -> some View {
+        if model.detectedModels.isEmpty {
+            TextField(title, text: selection, prompt: Text("填模型名，或点「获取模型列表」"))
+                .onSubmit { model.commitCloud() }
+        } else {
+            Picker(title, selection: Binding(
+                get: { selection.wrappedValue },
+                set: { newValue in
+                    selection.wrappedValue = newValue
+                    model.commitCloud()
+                }
+            )) {
+                if selection.wrappedValue.isEmpty {
+                    Text("选择模型").tag("")
+                }
+                ForEach(model.detectedModels, id: \.self) { name in
+                    Text(name).tag(name)
+                }
+                // Keep a hand-typed name selectable even if the list omits it.
+                if !selection.wrappedValue.isEmpty,
+                   !model.detectedModels.contains(selection.wrappedValue) {
+                    Text("\(selection.wrappedValue)（手动填写）").tag(selection.wrappedValue)
+                }
+            }
+        }
     }
 
     // MARK: - Shared pieces
