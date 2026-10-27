@@ -22,7 +22,8 @@ final class HelperAudioCapture: @unchecked Sendable {
     private var process: Process?
     private var reader: FileHandle?
     private var diagnostics: Pipe?
-    private var buffer = Data()
+    /// Bytes received from the helper that do not yet form a whole frame.
+    private var buffer: [UInt8] = []
     private let lock = NSLock()
 
     /// Whether the helper is running and streaming.
@@ -136,7 +137,7 @@ final class HelperAudioCapture: @unchecked Sendable {
             }
 
             lock.lock()
-            buffer.append(data)
+            buffer.append(contentsOf: data)
             lock.unlock()
 
             // Pull out whole frames: 4-byte little-endian length, then payload.
@@ -146,20 +147,28 @@ final class HelperAudioCapture: @unchecked Sendable {
                     lock.unlock()
                     break
                 }
-                let length = buffer.prefix(4).withUnsafeBytes { raw -> Int in
-                    Int(UInt32(littleEndian: raw.load(as: UInt32.self)))
-                }
-                guard buffer.count >= 4 + length else {
+                // Read the header byte by byte. `Data` makes no alignment
+                // promise, so an `UInt32` load would trap.
+                let length = Int(buffer[0])
+                    | Int(buffer[1]) << 8
+                    | Int(buffer[2]) << 16
+                    | Int(buffer[3]) << 24
+                let total = 4 + length
+                guard length > 0, buffer.count >= total else {
                     lock.unlock()
                     break
                 }
-                let payload = buffer.subdata(in: 4..<(4 + length))
-                buffer.removeFirst(4 + length)
+                let payload = Array(buffer[4..<total])
+                buffer.removeFirst(total)
                 lock.unlock()
 
-                let samples = payload.withUnsafeBytes { raw -> [Int16] in
-                    let base = raw.bindMemory(to: Int16.self)
-                    return Array(base)
+                // Little-endian Int16 pairs, assembled by hand for the same
+                // alignment reason.
+                var samples = [Int16](repeating: 0, count: payload.count / 2)
+                for index in 0..<samples.count {
+                    let low = UInt16(payload[index * 2])
+                    let high = UInt16(payload[index * 2 + 1]) << 8
+                    samples[index] = Int16(bitPattern: low | high)
                 }
                 if !samples.isEmpty {
                     onSamples?(samples)

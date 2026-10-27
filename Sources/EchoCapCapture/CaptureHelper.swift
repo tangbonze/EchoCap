@@ -44,6 +44,11 @@ final class Helper {
     private var running = true
 
     func run() {
+        // The realtime callback has no client-data pointer, so it finds this
+        // instance through the static slot. Without this assignment every
+        // callback silently returns and not a single sample ever arrives.
+        Helper.current = self
+
         // Tell the parent we are alive.
         writeDiagnostic("ready (主线程=\(Thread.isMainThread))")
 
@@ -59,6 +64,8 @@ final class Helper {
         writeDiagnostic("capturing")
 
         // Pump the ring buffer and write frames to the parent.
+        var totalSamples = 0
+        var lastReport = Date()
         while running {
             let chunk = ring.read(max: 4096)
             if chunk.isEmpty {
@@ -68,6 +75,14 @@ final class Helper {
             let mono = converter.process(chunk, channelCount: format.channels, frameCount: chunk.count / format.channels)
             guard !mono.isEmpty else { continue }
             writeFrames(mono)
+            totalSamples += mono.count
+
+            if Date().timeIntervalSince(lastReport) > 3 {
+                lastReport = Date()
+                writeDiagnostic(
+                    "sent \(totalSamples) samples (\(String(format: "%.1f", Double(totalSamples) / 16_000))s)"
+                )
+            }
         }
     }
 
@@ -119,6 +134,11 @@ final class Helper {
                 inputRate: asbd.mSampleRate,
                 outputRate: 16_000
             )
+            writeDiagnostic(
+                "format \(Int(asbd.mSampleRate))Hz \(asbd.mChannelsPerFrame)ch"
+            )
+        } else {
+            writeDiagnostic("format unknown, assuming 48000Hz 2ch")
         }
         return true
     }

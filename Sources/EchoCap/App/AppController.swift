@@ -58,6 +58,9 @@ final class AppController {
 
     /// Total number of audio samples handed to the recogniser.
     private var receivedSampleCount = 0
+
+    /// Watches for a capture that runs but never delivers sound.
+    private var silenceWatchdog: Task<Void, Never>?
     /// When the sample count was last reported.
     private var lastSampleReport = Date()
 
@@ -122,6 +125,12 @@ final class AppController {
         } else {
             overlay.resetPosition()
         }
+
+        // Give the window a definite size and paint the first frame, so the
+        // overlay is composited even before the first caption arrives.
+        overlay.setContentSize(overlay.frame.size)
+        overlay.contentView?.needsLayout = true
+        overlay.displayIfNeeded()
 
         startDisplayTimer()
         startPointerTimer()
@@ -219,9 +228,13 @@ final class AppController {
             switch source {
             case .systemAudio:
                 systemCapture.onSamples = { [weak self] samples in
+                    // Feed inline: the recogniser's input stream is
+                    // thread-safe, and hopping through a task per chunk would
+                    // let samples arrive out of order and garble the audio.
+                    self?.speech.feed(samples: samples)
+                    let count = samples.count
                     Task { @MainActor [weak self] in
-                        self?.speech.feed(samples: samples)
-                        self?.receivedSampleCount += samples.count
+                        self?.receivedSampleCount += count
                     }
                 }
                 systemCapture.onFailure = { [weak self] message in
@@ -229,7 +242,14 @@ final class AppController {
                         self?.log("采集失败: \(message)")
                     }
                 }
-                try await systemCapture.start()
+                // Creating the tap blocks while macOS shows the Screen & System
+                // Audio Recording prompt, and the user can take their time.
+                overlayModel.banner = OverlayBanner(
+                    kind: .info,
+                    title: "正在准备聆听……",
+                    detail: "如果 macOS 弹出录音授权，请点「允许」。"
+                )
+                try await systemCapture.start(timeout: 90)
             case .microphone:
                 microphoneCapture.onSamples = { [weak self] samples in
                     self?.speech.feed(samples: samples)
@@ -254,15 +274,33 @@ final class AppController {
         }
 
         log("采集已启动: \(source.displayName)")
-        overlayModel.banner = OverlayBanner(
-            kind: .info,
-            title: "正在聆听……",
-            detail: "播放点什么，字幕就会出现在这里。"
-        )
+        overlayModel.banner = nil
         isRunning = true
         receivedSampleCount = 0
         statusText = "正在聆听"
         lastError = nil
+        startSilenceWatchdog(source: source)
+    }
+
+    /// Complain if the capture runs but no sound ever arrives.
+    ///
+    /// The usual cause is missing Screen & System Audio Recording
+    /// permission: macOS hands back a tap that starts happily and then
+    /// delivers silence, with no error anywhere.
+    private func startSilenceWatchdog(source: AudioSource) {
+        silenceWatchdog?.cancel()
+        silenceWatchdog = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            guard self.isRunning, self.receivedSampleCount == 0 else { return }
+            guard self.overlayModel.liveBox == nil else { return }
+            self.overlayModel.banner = OverlayBanner(
+                kind: .warning,
+                title: "没有收到任何声音",
+                detail: "请在「系统设置 → 隐私与安全性 → 屏幕与系统音频录制」里允许 EchoCap，然后重新打开它。"
+            )
+            self.log("5 秒内没有收到任何采样，多半是缺少系统音频录制权限")
+        }
     }
 
     /// Stop capturing. The overlay keeps its last caption until it fades.
@@ -270,6 +308,8 @@ final class AppController {
         guard isRunning else { return }
         isRunning = false
         userPaused = true
+        silenceWatchdog?.cancel()
+        silenceWatchdog = nil
         statusText = "已暂停"
         systemCapture.stop()
         microphoneCapture.stop()
@@ -364,6 +404,11 @@ final class AppController {
             isFinal: update.isFinal
         )
 
+        // The "listening…" placeholder has done its job once words arrive.
+        if overlayModel.banner != nil {
+            overlayModel.banner = nil
+        }
+
         if diagnosticLog {
             let kind = update.isFinal ? "定稿" : "实时"
             let shown = pipeline.liveBox?.displayText ?? update.text
@@ -407,6 +452,18 @@ final class AppController {
             lastSampleReport = now
             let seconds = Double(receivedSampleCount) / 16000.0
             log("已收到 \(receivedSampleCount) 个采样（约 \(String(format: "%.2f", seconds)) 秒音频）")
+            log(
+                "浮层 frame=\(overlay.frame) visible=\(overlay.isVisible)"
+                + " alpha=\(overlay.alphaValue) live=\(overlayModel.liveBox?.displayText ?? "nil")"
+                + " banner=\(overlayModel.banner == nil ? "nil" : "有")"
+            )
+            log(
+                "内容 content=\(overlay.contentView.map { "\($0.frame)" } ?? "nil")"
+                + " container=\(overlayModel.containerSize)"
+                + " fading=\(overlayModel.isFadingOut)"
+                + " pointer=\(overlayModel.pointerLocation.map { "\($0)" } ?? "nil")"
+                + " history=\(overlayModel.historyBoxes.count)"
+            )
         }
 
         if pipeline.shouldClearHistory(now: now) {
@@ -420,6 +477,13 @@ final class AppController {
         overlayModel.liveBox = live?.box
         overlayModel.historyBoxes = history
         overlayModel.isFadingOut = pipeline.shouldFadeLiveBox(now: now)
+
+        // Nudge the hosting view. Without an explicit layout+display pass the
+        // first caption can stay invisible until something else happens to
+        // invalidate the window.
+        overlay.contentView?.needsLayout = true
+        overlay.contentView?.needsDisplay = true
+        overlay.displayIfNeeded()
     }
 
     /// Toggle the history stack (bound to holding `⌥`).

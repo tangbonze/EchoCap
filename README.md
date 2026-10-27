@@ -144,6 +144,8 @@ Tests/EchoCapTests/       19 个单元测试
 > - `AudioDeviceCreateIOProcID` 的 **client data 必须传 nil**，传非 nil 会永远等不到应答
 > - 回调要写成**全局函数**，不能是闭包字面量 —— Swift 会把闭包桥接成带 context 的 C 函数指针，音频服务器和它握手不上
 > - **不能在跑 AppKit run loop 的进程里创建 tap** —— 所以采集放在独立的辅助进程里
+> - 浮层窗口 `isOpaque = false` 时，根视图背景**不能用 `Color.clear`**：没有可合成的底板，SwiftUI 的 `.mask` 会把整层画成空白，字幕一个字都看不到。用 `Color.black.opacity(0.004)` 这种几乎不可见的底板
+> - 不要把 `contentView.translatesAutoresizingMaskIntoConstraints` 置为 `false`（也不要把宿主视图约束到 `contentView` 上）——那会让内容视图尺寸变 0，同样什么都画不出来
 
 **音频格式**（`SampleRateConverter.swift`）
 
@@ -189,7 +191,8 @@ Speech 框架每次给出的是**当前整段的累积文字**，而且会用不
 - ad-hoc 签名每次重建 CDHash 都会变，macOS 可能因此重新询问权限；用 Developer ID 证书签名可避免
 - 自动检测语言需要多语言模型（`mul_IN`），本机未安装时会自动退回已安装的单语言模型
 - 尚未实现：换人说话自动另起字幕框（需要说话人分离模型）、朗读译文、单一 App 定向捕获
-- 首次运行需要授予「屏幕与系统音频录制」权限；辅助进程在 app 包内，与主程序共用同一份授权
+- 首次运行需要授予「屏幕与系统音频录制」权限 —— 创建 tap 会阻塞等你在弹窗里点「允许」，所以 app 会等 90 秒并在浮层上提示
+- 一句话结束后约 4 秒没有新文字，字幕会淡出（可在设置里调 `fadeDelay`）；按住 `⌥` 可以回看历史；辅助进程在 app 包内，与主程序共用同一份授权
 
 ## 许可证
 

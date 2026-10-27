@@ -38,17 +38,11 @@ final class CaptionOverlayWindow: NSPanel {
         animationBehavior = .none
 
         let host = NSHostingView(rootView: CaptionOverlayView(model: model))
-        host.translatesAutoresizingMaskIntoConstraints = false
+        // Let AppKit size the hosting view to the window. Turning off the
+        // autoresizing translation on the content view itself leaves it with
+        // no size, and the overlay then draws nothing at all.
+        host.autoresizingMask = [.width, .height]
         contentView = host
-        if let contentView {
-            contentView.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                host.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-                host.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-                host.topAnchor.constraint(equalTo: contentView.topAnchor),
-                host.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            ])
-        }
     }
 
     /// Reposition the overlay to the centre of the main screen.

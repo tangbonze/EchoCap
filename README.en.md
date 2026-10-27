@@ -155,6 +155,13 @@ frames and feeds them straight to the recogniser.
 >   audio server never completes the handshake with one
 > - **A tap cannot be created in a process running an AppKit run loop** — hence
 >   the separate helper
+> - For a window with `isOpaque = false`, the root view's background **must not
+>   be `Color.clear`**: with nothing to composite, SwiftUI's `.mask` renders the
+>   whole layer as nothing and not a single caption shows. Use a
+>   near-invisible plate such as `Color.black.opacity(0.004)`
+> - Do not set `contentView.translatesAutoresizingMaskIntoConstraints` to
+>   `false`, and do not constrain the hosting view to `contentView` — the
+>   content view collapses to zero size and draws nothing
 
 **Audio format** (`SampleRateConverter.swift`)
 
@@ -195,7 +202,11 @@ This machine has only the Command Line Tools, no full Xcode, so:
 - Ad-hoc signing changes the CDHash on every rebuild, so macOS may re-ask for permission; a Developer ID signature avoids this
 - Automatic language detection needs the multilingual model (`mul_IN`); when it is not installed the app falls back to an installed single-language model
 - Not implemented: automatic new box on speaker change (needs a speaker-diarisation model), speaking the translation aloud, capturing a single named app
-- Screen & System Audio Recording permission is required; the helper lives inside the app bundle and shares the app's grant
+- Screen & System Audio Recording permission is required. Creating the tap
+  blocks while macOS shows the prompt, so the app waits up to 90 seconds and
+  says so in the overlay
+- A caption fades about 4 seconds after the speech stops (tune `fadeDelay` in
+  Settings); hold `⌥` to bring the history back; the helper lives inside the app bundle and shares the app's grant
 
 ## License
 

@@ -51,7 +51,11 @@ struct CaptionOverlayView: View {
                     size: proxy.size
                 )
             }
-            .background(Color.clear)
+            // A hair of opacity instead of full transparency: a window with
+            // `isOpaque = false` and a completely clear root layer gives the
+            // compositor nothing to draw, and the masked caption stack then
+            // renders as nothing at all.
+            .background(Color.black.opacity(0.004))
             .allowsHitTesting(false)
             .onAppear { model.containerSize = proxy.size }
             .onChange(of: proxy.size) { _, newValue in model.containerSize = newValue }
