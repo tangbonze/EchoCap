@@ -92,45 +92,26 @@ enum AppIconRenderer {
         context.strokePath()
         context.restoreGState()
 
-        // --- Foreground: a waveform above three caption lines ---
+        // --- Foreground: five symmetric waveform bars, dead centre ---
+        //
+        // Scheme A: pure sound. No caption lines, no lettering — the bars are
+        // vertically and horizontally symmetric around the plate centre, so
+        // nothing reads as off-balance at small sizes.
         let cx = plate.midX
-
-        // Waveform: five vertical rounded bars of varying height.
-        let heights: [CGFloat] = [76, 132, 196, 132, 76]
-        let barWidth: CGFloat = 34
-        let spacing: CGFloat = 54
-        let waveCenterY = plate.midY + 176
-        let totalWidth = CGFloat(heights.count - 1) * spacing + barWidth
+        let heights: [CGFloat] = [180, 300, 420, 300, 180]
+        let barWidth: CGFloat = 52
+        let step: CGFloat = 114 // spacing + barWidth: the distance between bar starts
+        let totalWidth = CGFloat(heights.count - 1) * step + barWidth
         var x = cx - totalWidth / 2
 
-        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.96))
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 0.97))
         for height in heights {
-            let rect = CGRect(x: x, y: waveCenterY - height / 2, width: barWidth, height: height)
+            let rect = CGRect(x: x, y: plate.midY - height / 2, width: barWidth, height: height)
             let path = CGPath(roundedRect: rect, cornerWidth: barWidth / 2, cornerHeight: barWidth / 2, transform: nil)
             context.addPath(path)
             context.fillPath()
-            x += spacing + barWidth
+            x += step
         }
-
-        // Caption lines: three rounded bars of decreasing width, like subtitles.
-        let lineWidths: [CGFloat] = [430, 340, 210]
-        let lineHeight: CGFloat = 42
-        let lineGap: CGFloat = 30
-        let blockTop = waveCenterY - 168
-        let blockHeight = CGFloat(lineWidths.count) * lineHeight + CGFloat(lineWidths.count - 1) * lineGap
-        var y = blockTop - blockHeight
-
-        for (index, width) in lineWidths.enumerated() {
-            let alpha = 1.0 - CGFloat(index) * 0.22
-            context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: alpha))
-            let rect = CGRect(x: cx - width / 2, y: y, width: width, height: lineHeight)
-            let path = CGPath(roundedRect: rect, cornerWidth: lineHeight / 2, cornerHeight: lineHeight / 2, transform: nil)
-            context.addPath(path)
-            context.fillPath()
-            y -= lineHeight + lineGap
-        }
-
-        _ = canvas
     }
 
     /// Write an `.icns` file containing every required size.

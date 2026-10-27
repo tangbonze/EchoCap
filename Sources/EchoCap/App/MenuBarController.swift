@@ -43,28 +43,32 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             : "EchoCap 已暂停（\(shortcut) 开始）"
     }
 
-    /// A simple waveform glyph, drawn so we do not need a bundled asset.
+    /// The menu-bar glyph: five symmetric waveform bars (scheme A), matching
+    /// the app icon. Symmetry is what keeps it reading as centred at 18 pt.
     private static func makeIcon() -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size)
-        image.lockFocus()
+        image.lockFocusFlipped(false)
         NSColor.black.setStroke()
-        let path = NSBezierPath()
-        path.lineWidth = 1.6
-        path.lineCapStyle = .round
-        let heights: [CGFloat] = [5, 11, 15, 9]
-        for (index, height) in heights.enumerated() {
-            let x = 2.5 + CGFloat(index) * 4.2
-            path.move(to: NSPoint(x: x, y: 9 - height / 2))
-            path.line(to: NSPoint(x: x, y: 9 + height / 2))
+        NSColor.black.setFill()
+
+        let heights: [CGFloat] = [5.4, 9.9, 14.0, 9.9, 5.4]
+        let barWidth: CGFloat = 1.4
+        let step: CGFloat = 2.8 // spacing + barWidth
+        let total = CGFloat(heights.count - 1) * step + barWidth
+        var x = (size.width - total) / 2
+
+        for height in heights {
+            let rect = CGRect(x: x, y: (size.height - height) / 2, width: barWidth, height: height)
+            let path = NSBezierPath(roundedRect: rect, xRadius: barWidth / 2, yRadius: barWidth / 2)
+            path.fill()
+            x += step
         }
-        path.stroke()
+
         image.unlockFocus()
         image.isTemplate = true
         return image
     }
-
-    // MARK: - Menu construction
 
     private func rebuildMenu() {
         guard let statusItemInternal else { return }
