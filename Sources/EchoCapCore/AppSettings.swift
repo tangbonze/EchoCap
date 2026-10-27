@@ -204,6 +204,12 @@ public final class AppSettings: @unchecked Sendable {
         set { defaults.set(newValue, forKey: Keys.overlayOrigin) }
     }
 
+    /// Overlay size as "width,height". `nil` means the default size.
+    public var overlaySize: String? {
+        get { defaults.string(forKey: Keys.overlaySize) }
+        set { defaults.set(newValue, forKey: Keys.overlaySize) }
+    }
+
     // MARK: - Keys
 
     private enum Keys {
@@ -228,5 +234,6 @@ public final class AppSettings: @unchecked Sendable {
         static let newBoxOnSpeaker = "newBoxOnSpeakerChange"
         static let fadeDelay = "fadeDelay"
         static let overlayOrigin = "overlayOrigin"
+        static let overlaySize = "overlaySize"
     }
 }

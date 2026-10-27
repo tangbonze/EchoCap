@@ -17,8 +17,7 @@ struct CaptionPipelineTests {
     }
 
     @Test("最终文本进入字幕框")
-    func committedTextBecomesVisible() {
-        let pipeline = CaptionPipeline(settings: makeSettings())
+    func committedTextBecomesVisible() {        let pipeline = CaptionPipeline(settings: makeSettings())
         pipeline.ingest(text: "Hello world", segmentID: 1, isFinal: true)
         #expect(pipeline.liveBox?.displayText == "Hello world")
     }
@@ -66,7 +65,7 @@ struct CaptionPipelineTests {
         let totalLines = TextMeasurer.lineCount(
             text: long,
             fontSize: settings.fontSize,
-            width: CaptionPipeline.overlayWidth
+            width: pipeline.measurementWidth
         )
         #expect(totalLines > settings.linesPerBox, "测试文本本身应当超过行数上限")
 
@@ -77,7 +76,7 @@ struct CaptionPipelineTests {
             let lines = TextMeasurer.lineCount(
                 text: box.displayText,
                 fontSize: settings.fontSize,
-                width: CaptionPipeline.overlayWidth
+                width: pipeline.measurementWidth
             )
             #expect(lines <= settings.linesPerBox, "每个字幕框都不应超过行数上限")
         }
@@ -121,4 +120,32 @@ struct CaptionPipelineTests {
         #expect(pipeline.shouldFadeLiveBox(now: Date().addingTimeInterval(1)) == false)
         #expect(pipeline.shouldFadeLiveBox(now: Date().addingTimeInterval(10)) == true)
     }
+    @Test("窗口变窄后分页跟着变窄")
+    func paginationFollowsMeasurementWidth() {
+        let settings = makeSettings()
+        settings.linesPerBox = 2
+
+        let wide = CaptionPipeline(settings: settings)
+        wide.measurementWidth = 1100
+        let narrow = CaptionPipeline(settings: settings)
+        narrow.measurementWidth = 420
+
+        let text = String(repeating: "the quick brown fox jumps over the lazy dog ", count: 6)
+            .trimmingCharacters(in: .whitespaces)
+
+        wide.ingest(text: text, segmentID: 1, isFinal: true)
+        narrow.ingest(text: text, segmentID: 1, isFinal: true)
+
+        // 同样一段话，窄窗口要多分几屏。
+        #expect(narrow.historyBoxes.count > wide.historyBoxes.count)
+        for box in narrow.historyBoxes {
+            let lines = TextMeasurer.lineCount(
+                text: box.displayText,
+                fontSize: settings.fontSize,
+                width: narrow.measurementWidth
+            )
+            #expect(lines <= settings.linesPerBox)
+        }
+    }
+
 }

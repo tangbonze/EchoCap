@@ -188,8 +188,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         save.target = self
         menu.addItem(save)
 
-        // Reset overlay position
-        let reset = NSMenuItem(title: "重置浮层位置", action: #selector(resetPosition), keyEquivalent: "")
+        // Move / resize the overlay. Off by default: while it is on the
+        // overlay takes clicks like a normal window, which is exactly what you
+        // do not want while reading along with something else.
+        let layout = NSMenuItem(
+            title: "调整浮层位置与大小",
+            action: #selector(toggleLayoutEditing),
+            keyEquivalent: "l"
+        )
+        layout.keyEquivalentModifierMask = [.command, .option]
+        layout.target = self
+        layout.state = controller.isEditingLayout ? .on : .off
+        menu.addItem(layout)
+
+        // Reset overlay geometry
+        let reset = NSMenuItem(title: "恢复浮层默认位置与大小", action: #selector(resetPosition), keyEquivalent: "")
         reset.target = self
         menu.addItem(reset)
 
@@ -289,8 +302,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
     }
 
+    @objc private func toggleLayoutEditing() {
+        controller.toggleLayoutEditing()
+    }
+
     @objc private func resetPosition() {
-        controller.resetOverlayPosition()
+        controller.resetOverlayGeometry()
     }
 
     @objc private func openSettings() {

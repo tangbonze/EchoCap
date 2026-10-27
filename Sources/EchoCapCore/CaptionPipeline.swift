@@ -113,7 +113,7 @@ public final class CaptionPipeline {
 
     /// Split pending text into boxes that each fit within `linesPerBox` lines.
     private func paginate(sourceAppName: String?) {
-        let width = Self.overlayWidth
+        let width = measurementWidth
         let maxLines = max(1, settings.linesPerBox)
 
         while true {
@@ -156,8 +156,14 @@ public final class CaptionPipeline {
     }
 
     /// Approximate usable width of the overlay box, in points.
-    /// Width the overlay's text is measured against, in points.
-    public static let overlayWidth: CGFloat = 1000
+    /// Width the caption text is measured against, in points.
+    ///
+    /// Follows the overlay's real width so pagination and the line clip agree
+    /// with what is actually on screen after the user resizes it.
+    public var measurementWidth: CGFloat = defaultOverlayWidth
+
+    /// Width used before the overlay reports its own size.
+    public static let defaultOverlayWidth: CGFloat = 1100
 
     // MARK: - Reading state
 

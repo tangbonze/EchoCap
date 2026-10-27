@@ -433,6 +433,7 @@ struct SettingsView: View {
                 KeyHintRow(keys: "⌥", label: "按住回溯，堆叠历史字幕")
                 KeyHintRow(keys: "⌥F", label: "搜索历史字幕")
                 KeyHintRow(keys: "⇧", label: "按住拖动浮层")
+                KeyHintRow(keys: "⌥⌘L", label: "调整浮层位置与大小（可拖动、可拉伸）")
                 KeyHintRow(keys: "⌘,", label: "打开设置")
                 KeyHintRow(keys: "Esc", label: "关闭历史堆叠")
             }

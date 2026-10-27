@@ -2,8 +2,7 @@ import SwiftUI
 import AppKit
 import EchoCapCore
 
-/// The SwiftUI layer that draws captions, dissolves them under the pointer,
-/// and stacks history when `⌥` is held.
+/// The SwiftUI layer that draws captions and stacks history when `⌥` is held.
 struct CaptionOverlayView: View {
     @ObservedObject var model: OverlayModel
 
@@ -19,6 +18,7 @@ struct CaptionOverlayView: View {
                             CaptionBoxView(
                                 box: box,
                                 settings: model.settings,
+                                availableWidth: textWidth(in: proxy.size),
                                 isLive: false,
                                 isHighlighted: model.searchResults.contains(box.id)
                             )
@@ -30,6 +30,7 @@ struct CaptionOverlayView: View {
                         CaptionBoxView(
                             box: live,
                             settings: model.settings,
+                            availableWidth: textWidth(in: proxy.size),
                             isLive: true,
                             isHighlighted: false
                         )
@@ -48,10 +49,28 @@ struct CaptionOverlayView: View {
             // compositor nothing to draw, and the masked caption stack then
             // renders as nothing at all.
             .background(Color.black.opacity(0.004))
+            .overlay {
+                if model.isEditingLayout {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(
+                            Color.accentColor.opacity(0.75),
+                            style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
+                        )
+                        .padding(2)
+                        .allowsHitTesting(false)
+                }
+            }
+            // Hit testing stays off even while editing: the window needs the
+            // clicks itself so its background can drag and its edges resize.
             .allowsHitTesting(false)
             .onAppear { model.containerSize = proxy.size }
             .onChange(of: proxy.size) { _, newValue in model.containerSize = newValue }
         }
+    }
+
+    /// Width available to caption text, once the paddings are taken out.
+    private func textWidth(in size: CGSize) -> Double {
+        max(120, size.width - 24 * 2 - 16 * 2)
     }
 }
 
@@ -98,6 +117,8 @@ struct BannerView: View {
 struct CaptionBoxView: View {
     let box: CaptionBox
     let settings: AppSettings
+    /// Width the text has to fit into, in points.
+    let availableWidth: Double
     let isLive: Bool
     let isHighlighted: Bool
 
@@ -115,7 +136,7 @@ struct CaptionBoxView: View {
             Text(box.visibleText(
                 maxLines: settings.linesPerBox,
                 fontSize: settings.fontSize,
-                width: CaptionPipeline.overlayWidth
+                width: availableWidth
             ))
             .font(.system(size: settings.fontSize, weight: .semibold))
             .foregroundStyle(.primary)
@@ -197,6 +218,8 @@ final class OverlayModel: ObservableObject {
     @Published var isFadingOut = false
     @Published var searchResults: Set<UUID> = []
     @Published var containerSize: CGSize = .zero
+    /// True while the user is moving or resizing the overlay.
+    @Published var isEditingLayout = false
 
     let settings: AppSettings
 

@@ -60,6 +60,12 @@ final class AppController {
 
     /// Watches for a capture that runs but never delivers sound.
     private var silenceWatchdog: Task<Void, Never>?
+
+    /// Loudest sample seen since the last report, 0…32767.
+    private var peakLevel: Int = 0
+
+    /// Loudest sample seen since capture started.
+    private var peakSinceStart: Int = 0
     /// When the sample count was last reported.
     private var lastSampleReport = Date()
 
@@ -102,10 +108,14 @@ final class AppController {
         overlayModel = OverlayModel(settings: settings)
         overlay = CaptionOverlayWindow(model: overlayModel)
 
-        overlay.onPositionChanged = { [weak self] in
+        overlay.onGeometryChanged = { [weak self] in
             guard let self else { return }
-            let origin = self.overlay.frame.origin
-            self.settings.overlayOrigin = "\(origin.x),\(origin.y)"
+            let frame = self.overlay.frame
+            self.settings.overlayOrigin = "\(frame.origin.x),\(frame.origin.y)"
+            self.settings.overlaySize = "\(frame.width),\(frame.height)"
+            // Pagination has to measure against the width the user chose.
+            self.pipeline.measurementWidth = self.textWidth(for: frame.size)
+            self.refreshDisplay()
         }
     }
 
@@ -114,6 +124,15 @@ final class AppController {
     /// Prepare the UI. Called once at launch.
     func bootstrap() {
         overlay.orderFrontRegardless()
+
+        // A size the user chose last time, if it still fits the screen.
+        if let saved = settings.overlaySize {
+            let parts = saved.split(separator: ",").compactMap { Double($0) }
+            if parts.count == 2, parts[0] >= 200, parts[1] >= 80 {
+                overlay.restoreSize(NSSize(width: parts[0], height: parts[1]))
+            }
+        }
+
         if let origin = settings.overlayOrigin {
             let parts = origin.split(separator: ",").compactMap { Double($0) }
             if parts.count == 2 {
@@ -128,10 +147,59 @@ final class AppController {
         // Give the window a definite size and paint the first frame, so the
         // overlay is composited even before the first caption arrives.
         overlay.setContentSize(overlay.frame.size)
+        pipeline.measurementWidth = textWidth(for: overlay.frame.size)
         overlay.contentView?.needsLayout = true
         overlay.displayIfNeeded()
 
+        // Test hook: place the overlay at an exact frame, e.g.
+        // `--overlay-frame 200,500,800,220`.
+        if let index = CommandLine.arguments.firstIndex(of: "--overlay-frame"),
+           index + 1 < CommandLine.arguments.count {
+            let parts = CommandLine.arguments[index + 1]
+                .split(separator: ",")
+                .compactMap { Double($0) }
+            if parts.count == 4 {
+                overlay.setFrame(
+                    NSRect(x: parts[0], y: parts[1], width: parts[2], height: parts[3]),
+                    display: true
+                )
+            }
+        }
+
+        if CommandLine.arguments.contains("--edit-layout") {
+            setLayoutEditing(true)
+        }
+
         startDisplayTimer()
+    }
+
+    /// Width caption text has to fit into for a given window size.
+    private func textWidth(for size: NSSize) -> CGFloat {
+        max(120, size.width - 24 * 2 - 16 * 2)
+    }
+
+    // MARK: - Layout editing
+
+    /// Turn mouse interaction on so the overlay can be moved and resized.
+    var isEditingLayout: Bool { overlay.isEditingLayout }
+
+    func toggleLayoutEditing() {
+        setLayoutEditing(!overlay.isEditingLayout)
+    }
+
+    func setLayoutEditing(_ editing: Bool) {
+        overlay.setLayoutEditing(editing)
+        overlayModel.isEditingLayout = editing
+        statusText = editing
+            ? "调整布局中：拖动移动，拖边角改大小"
+            : "正在聆听"
+        log(editing ? "进入布局调整（可拖动、可拉伸）" : "退出布局调整")
+    }
+
+    /// Put the overlay back where it started, at its default size.
+    func resetOverlayGeometry() {
+        overlay.restoreSize(CaptionOverlayWindow.defaultSize)
+        overlay.resetPosition()
     }
 
     private func startDisplayTimer() {
@@ -208,6 +276,10 @@ final class AppController {
                     // let samples arrive out of order and garble the audio.
                     self?.speech.feed(samples: samples)
                     let count = samples.count
+                    var peak = 0
+                    for value in samples { peak = max(peak, abs(Int(value))) }
+                    if peak > self?.peakLevel ?? 0 { self?.peakLevel = peak }
+                    if peak > self?.peakSinceStart ?? 0 { self?.peakSinceStart = peak }
                     Task { @MainActor [weak self] in
                         self?.receivedSampleCount += count
                     }
@@ -252,6 +324,7 @@ final class AppController {
         overlayModel.banner = nil
         isRunning = true
         receivedSampleCount = 0
+        peakSinceStart = 0
         statusText = "正在聆听"
         lastError = nil
         startSilenceWatchdog(source: source)
@@ -259,22 +332,33 @@ final class AppController {
 
     /// Complain if the capture runs but no sound ever arrives.
     ///
-    /// The usual cause is missing Screen & System Audio Recording
-    /// permission: macOS hands back a tap that starts happily and then
-    /// delivers silence, with no error anywhere.
+    /// The usual cause is missing Screen & System Audio Recording permission:
+    /// macOS hands back a tap that starts happily and then delivers **silence**,
+    /// with no error anywhere. Silence is indistinguishable from "nothing is
+    /// playing" from the app's point of view, so this waits long enough to be
+    /// reasonably sure before saying anything.
     private func startSilenceWatchdog(source: AudioSource) {
         silenceWatchdog?.cancel()
         silenceWatchdog = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
             guard let self, !Task.isCancelled else { return }
-            guard self.isRunning, self.receivedSampleCount == 0 else { return }
+            guard self.isRunning else { return }
             guard self.overlayModel.liveBox == nil else { return }
+
+            let silent = self.peakSinceStart < 80
+            let noSamples = self.receivedSampleCount == 0
+            guard silent || noSamples else { return }
+
             self.overlayModel.banner = OverlayBanner(
                 kind: .warning,
-                title: "没有收到任何声音",
-                detail: "请在「系统设置 → 隐私与安全性 → 屏幕与系统音频录制」里允许 EchoCap，然后重新打开它。"
+                title: "没有收到声音",
+                detail: "如果是 EchoCap 更新过，请到「系统设置 → 隐私与安全性 → 屏幕与系统音频录制」"
+                    + "重新允许 EchoCap，再重开它。"
             )
-            self.log("5 秒内没有收到任何采样，多半是缺少系统音频录制权限")
+            self.log(
+                "6 秒内没有可用音频（采样 \(self.receivedSampleCount)，峰值 \(self.peakSinceStart)），"
+                + "多半是缺少系统音频录制权限"
+            )
         }
     }
 
@@ -482,7 +566,11 @@ final class AppController {
                 + " container=\(overlayModel.containerSize)"
                 + " fading=\(overlayModel.isFadingOut)"
                 + " history=\(overlayModel.historyBoxes.count)"
+                + " size=\(Int(overlay.frame.width))x\(Int(overlay.frame.height))"
+                + " editing=\(overlay.isEditingLayout) clickable=\(!overlay.ignoresMouseEvents)"
+                + " peak=\(peakLevel)"
             )
+            peakLevel = 0
         }
 
         if pipeline.shouldClearHistory(now: now) {
