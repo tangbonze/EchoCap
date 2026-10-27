@@ -585,28 +585,60 @@ final class AppController {
             return
         }
 
-        // The source is the language we are recognising, when known.
-        let source: Locale.Language
-        if let recognitionLocale {
-            source = recognitionLocale.language
-        } else if let detected = detectedSourceLanguage {
-            source = detected
-        } else {
-            // Fall back to English until we have heard something.
-            source = Locale.Language(identifier: "en")
+        // The recogniser's own locale is often a macrolanguage placeholder
+        // ("mul_IN" for the multilingual model) which no translator accepts —
+        // handing it over makes prepareTranslation hang forever. Resolve to a
+        // real language first.
+        let source = TranslationSourceLocale.resolve(
+            recognised: recognitionLocale?.language,
+            detected: detectedSourceLanguage
+        )
+        if source.languageCode?.identifier == "en",
+           recognitionLocale?.language.languageCode?.identifier == "mul" {
+            log("识别是多语种模型，翻译源语言退回英文")
         }
 
-        let ok = await translation.configure(
-            source: source,
-            target: target.language,
-            engine: settings.translationEngine,
-            cloud: cloudConfig(model: settings.cloudTranslationModel),
-            targetName: target.englishName
-        )
+        // Never let a stuck model block the whole session.
+        let service = translation
+        let engine = settings.translationEngine
+        let cloud = cloudConfig(model: settings.cloudTranslationModel)
+        let targetLanguage = target.language
+        let targetName = target.englishName
+        let ok = await Self.withTimeout(seconds: 12, fallback: false) {
+            await service.configure(
+                source: source,
+                target: targetLanguage,
+                engine: engine,
+                cloud: cloud,
+                targetName: targetName
+            )
+        }
         if !ok {
-            log("翻译引擎不可用：\(settings.translationEngine.displayName)")
+            log("翻译引擎不可用或超时：\(settings.translationEngine.displayName)")
         }
     }
+    /// Run an operation, giving up after `seconds`.
+    ///
+    /// Loading a translation model can block indefinitely when it dislikes the
+    /// language pair or starts a download the user never sees. The caption
+    /// pipeline must not stall behind that.
+    private static func withTimeout<T: Sendable>(
+        seconds: Double,
+        fallback: T,
+        operation: @escaping @Sendable () async -> T
+    ) async -> T {
+        await withTaskGroup(of: T.self) { group in
+            group.addTask { await operation() }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                return fallback
+            }
+            let first = await group.next() ?? fallback
+            group.cancelAll()
+            return first
+        }
+    }
+
     // MARK: - Recognition handling
 
     private func handleRecognition(text: String, isFinal: Bool, rangeStart: Double) {
