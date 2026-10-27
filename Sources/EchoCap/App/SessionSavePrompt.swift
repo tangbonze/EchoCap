@@ -25,7 +25,6 @@ enum SessionSavePrompt {
             return
         }
 
-        let summaryAvailability = SummaryService.availability(engine: summaryEngine, cloud: cloud)
         let minutes = max(1, Int(Date().timeIntervalSince(startedAt) / 60))
 
         let alert = NSAlert()
@@ -36,26 +35,22 @@ enum SessionSavePrompt {
         alert.addButton(withTitle: "保存…")
         alert.addButton(withTitle: "不保存")
 
-        let summaryCheckbox = NSButton(
-            checkboxWithTitle: "保存后用 AI 生成摘要（本机）",
-            target: nil,
-            action: nil
+        // Both engines are offered, so the choice is made here rather than in
+        // Settings — which model to spend on depends on the recording.
+        let choiceView = SummaryChoiceView(
+            preferred: summaryEngine,
+            localAvailability: SummaryService.availability(engine: .local, cloud: cloud),
+            cloudAvailability: SummaryService.availability(engine: .cloud, cloud: cloud)
         )
-        summaryCheckbox.state = summaryAvailability.canSummarise ? .on : .off
-        if case .unavailable(let reason) = summaryAvailability {
-            summaryCheckbox.isEnabled = false
-            summaryCheckbox.toolTip = reason
-            summaryCheckbox.title = "AI 摘要不可用（\(reason)）"
-            summaryCheckbox.state = .off
-        }
-        alert.accessoryView = summaryCheckbox
+        alert.accessoryView = choiceView
 
         guard alert.runModal() == .alertFirstButtonReturn else {
             onFinish?()
             return
         }
 
-        let wantsSummary = summaryCheckbox.state == .on && summaryAvailability.canSummarise
+        let chosenEngine = choiceView.chosenEngine
+        let wantsSummary = chosenEngine != nil
         guard let url = askForDestination() else {
             onFinish?()
             return
@@ -69,11 +64,11 @@ enum SessionSavePrompt {
             return
         }
 
-        if wantsSummary {
+        if let chosenEngine {
             summarise(
                 boxes: boxes,
                 transcriptURL: url,
-                engine: summaryEngine,
+                engine: chosenEngine,
                 cloud: cloud,
                 onFinish: onFinish
             )
@@ -226,5 +221,109 @@ final class SummaryWindowController {
 
     @objc private func closeWindow() {
         window?.orderOut(nil)
+    }
+}
+
+/// The accessory view in the end-of-recording alert: a popup that picks which
+/// model summarises, plus a line saying why an option is greyed out.
+final class SummaryChoiceView: NSView {
+
+    enum Choice: Int {
+        case none = 0
+        case local = 1
+        case cloud = 2
+    }
+
+    private let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let hint = NSTextField(labelWithString: "")
+
+    private let localAvailability: SummaryService.Availability
+    private let cloudAvailability: SummaryService.Availability
+
+    /// `nil` when the user does not want a summary.
+    var chosenEngine: ModelEngine? {
+        switch Choice(rawValue: popup.indexOfSelectedItem) {
+        case .local: return .local
+        case .cloud: return .cloud
+        default: return nil
+        }
+    }
+
+    init(
+        preferred: ModelEngine,
+        localAvailability: SummaryService.Availability,
+        cloudAvailability: SummaryService.Availability
+    ) {
+        self.localAvailability = localAvailability
+        self.cloudAvailability = cloudAvailability
+        super.init(frame: NSRect(x: 0, y: 0, width: 420, height: 56))
+
+        popup.addItems(withTitles: ["不生成摘要", "用本机模型总结", "用云端 API 总结"])
+        popup.item(at: Choice.local.rawValue)?.isEnabled = localAvailability.canSummarise
+        popup.item(at: Choice.cloud.rawValue)?.isEnabled = cloudAvailability.canSummarise
+        if !localAvailability.canSummarise {
+            popup.item(at: Choice.local.rawValue)?.title = "用本机模型总结（不可用）"
+        }
+        if !cloudAvailability.canSummarise {
+            popup.item(at: Choice.cloud.rawValue)?.title = "用云端 API 总结（未配置）"
+        }
+
+        // Start on whichever engine the settings point at, if it can run.
+        switch preferred {
+        case .local:
+            popup.selectItem(at: localAvailability.canSummarise ? Choice.local.rawValue : Choice.none.rawValue)
+        case .cloud:
+            popup.selectItem(at: cloudAvailability.canSummarise ? Choice.cloud.rawValue : Choice.none.rawValue)
+        }
+
+        popup.target = self
+        popup.action = #selector(selectionChanged)
+
+        let label = NSTextField(labelWithString: "总结方式：")
+        hint.font = .systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+        hint.lineBreakMode = .byTruncatingTail
+
+        let row = NSStackView(views: [label, popup])
+        row.orientation = .horizontal
+        row.spacing = 8
+        row.alignment = .centerY
+
+        let column = NSStackView(views: [row, hint])
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 6
+        column.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(column)
+        NSLayoutConstraint.activate([
+            column.leadingAnchor.constraint(equalTo: leadingAnchor),
+            column.trailingAnchor.constraint(equalTo: trailingAnchor),
+            column.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            popup.widthAnchor.constraint(greaterThanOrEqualToConstant: 210),
+        ])
+
+        updateHint()
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    @objc private func selectionChanged() {
+        updateHint()
+    }
+
+    private func updateHint() {
+        var reasons: [String] = []
+        if case .unavailable(let reason) = localAvailability {
+            reasons.append("本机不可用：\(reason)")
+        }
+        if case .unavailable(let reason) = cloudAvailability {
+            reasons.append("云端不可用：\(reason)")
+        }
+
+        if !reasons.isEmpty {
+            hint.stringValue = reasons.joined(separator: "；")
+            return
+        }
+        hint.stringValue = "本机模型不联网；云端按你配置的接口计费。"
     }
 }
