@@ -7,7 +7,7 @@ import EchoCapCore
 final class MenuBarController: NSObject, NSMenuDelegate {
 
     private let controller: AppController
-    private var statusItem: NSStatusItem?
+    var statusItemInternal: NSStatusItem?
     private var settingsItem: NSMenuItem?
 
     /// Languages that can actually be recognised on this machine.
@@ -23,7 +23,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         item.button?.image = Self.makeIcon()
         item.button?.image?.isTemplate = true
         item.button?.toolTip = "EchoCap 实时字幕"
-        statusItem = item
+        statusItemInternal = item
         controller.onStateChanged = { [weak self] in
             self?.rebuildMenu()
             self?.refreshStatusItem()
@@ -36,9 +36,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     /// visible without opening the menu.
     private func refreshStatusItem() {
         let running = controller.isRunning
-        statusItem?.button?.appearsDisabled = !running
+        statusItemInternal?.button?.appearsDisabled = !running
         let shortcut = controller.hotKeyLabel
-        statusItem?.button?.toolTip = running
+        statusItemInternal?.button?.toolTip = running
             ? "EchoCap 正在聆听（\(shortcut) 暂停）"
             : "EchoCap 已暂停（\(shortcut) 开始）"
     }
@@ -67,7 +67,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     // MARK: - Menu construction
 
     private func rebuildMenu() {
-        guard let statusItem else { return }
+        guard let statusItemInternal else { return }
         let menu = NSMenu()
         menu.delegate = self
 
@@ -161,9 +161,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         layout.state = controller.isEditingLayout ? .on : .off
         menu.addItem(layout)
 
-        // Settings. No key equivalent: one is not assigned, and macOS otherwise
-        // puts a gear glyph next to this item that none of the others have.
-        let settingsItem = NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: "")
+        // The selector is `openPreferences`, not `openSettings`: macOS gives a
+        // menu item whose action is named `openSettings` a settings gear icon
+        // automatically, which the other items do not have.
+        let settingsItem = NSMenuItem(title: "设置…", action: #selector(openPreferences), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
         self.settingsItem = settingsItem
@@ -184,7 +185,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         quit.target = self
         menu.addItem(quit)
 
-        statusItem.menu = menu
+        statusItemInternal.menu = menu
     }
 
     // MARK: - Menu delegate
@@ -197,7 +198,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     /// Titles of the current menu, for the `--dump-menu` debug flag.
     func menuTitlesForDebug() -> [String] {
         rebuildMenu()
-        return (statusItem?.menu?.items ?? []).map {
+        return (statusItemInternal?.menu?.items ?? []).map {
             $0.isSeparatorItem ? "—" : ($0.title.isEmpty ? "(无标题)" : $0.title)
         }
     }
@@ -248,7 +249,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
 
-    @objc private func openSettings() {
+    @objc private func openPreferences() {
         SettingsWindowController.shared.show()
     }
 

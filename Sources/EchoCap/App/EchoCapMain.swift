@@ -159,6 +159,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let titles = menuBar.menuTitlesForDebug()
             print("菜单项（\(titles.count)）：")
             for title in titles { print("  • \(title)") }
+            if let items = menuBar.statusItemInternal?.menu?.items {
+                for item in items where !item.isSeparatorItem {
+                    if item.image != nil {
+                        print("  [有图标] \(item.title)")
+                    }
+                }
+            }
             NSApp.terminate(nil)
             return
         }
